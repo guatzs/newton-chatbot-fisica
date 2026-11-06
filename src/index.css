@@ -1,0 +1,76 @@
+@import "tailwindcss";
+
+/* KaTeX Formula Card Display Styling */
+.katex-display {
+  background-color: #FFFBD9 !important;
+  color: #941C2F !important;
+  border: 1.5px solid rgba(173, 202, 136, 0.5) !important;
+  border-radius: 1rem !important;
+  padding: 0.75rem 1rem !important;
+  margin: 0.75rem 0 !important;
+  text-align: center !important;
+  overflow-x: auto !important;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.04) !important;
+}
+
+.katex-display .katex {
+  color: #941C2F !important;
+  font-size: 1.15em !important;
+}
+
+.katex {
+  font-size: 1.05em;
+  color: inherit;
+}
+
+/* Newton Markdown Typography */
+.newton-markdown p {
+  margin-top: 0.35rem;
+  margin-bottom: 0.35rem;
+  line-height: 1.6;
+}
+
+.newton-markdown h1,
+.newton-markdown h2,
+.newton-markdown h3,
+.newton-markdown h4 {
+  font-weight: 700;
+  color: #941C2F;
+  margin-top: 0.75rem;
+  margin-bottom: 0.35rem;
+  font-family: 'Space Grotesk', sans-serif;
+}
+
+.newton-markdown ul {
+  list-style-type: disc;
+  margin-left: 1.25rem;
+  margin-top: 0.35rem;
+  margin-bottom: 0.35rem;
+}
+
+.newton-markdown ol {
+  list-style-type: decimal;
+  margin-left: 1.25rem;
+  margin-top: 0.35rem;
+  margin-bottom: 0.35rem;
+}
+
+.newton-markdown li {
+  margin-top: 0.15rem;
+  margin-bottom: 0.15rem;
+}
+
+.newton-markdown strong {
+  font-weight: 700;
+  color: #3D121A;
+}
+
+.newton-markdown code {
+  background-color: rgba(255, 255, 255, 0.65);
+  border: 1px solid rgba(173, 202, 136, 0.4);
+  padding: 0.1rem 0.35rem;
+  border-radius: 0.35rem;
+  font-family: monospace;
+  font-size: 0.85em;
+  color: #941C2F;
+}

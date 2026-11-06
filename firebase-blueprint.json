@@ -1,0 +1,43 @@
+{
+  "entities": {
+    "ChatSession": {
+      "title": "ChatSession",
+      "description": "Sesión de estudio o consulta con el tutor Newton",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "ID del usuario autenticado (UID)" },
+        "title": { "type": "string", "description": "Título o tema de la sesión" },
+        "topic": { "type": "string", "description": "Módulo temático del sílabo" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "messageCount": { "type": "number", "description": "Cantidad de mensajes en la sesión" }
+      },
+      "required": ["userId", "title", "createdAt"]
+    },
+    "ChatMessage": {
+      "title": "ChatMessage",
+      "description": "Mensaje intercambiado entre el estudiante y Newton AI",
+      "type": "object",
+      "properties": {
+        "sessionId": { "type": "string", "description": "ID de la sesión a la que pertenece" },
+        "sender": { "type": "string", "enum": ["user", "bot"] },
+        "text": { "type": "string", "description": "Contenido del mensaje" },
+        "formula": { "type": "string", "description": "Fórmula en LaTeX o notación física" },
+        "diagramType": { "type": "string", "description": "Tipo de diagrama adjunto o simulado" },
+        "imageUrl": { "type": "string", "description": "URL de imagen escaneada o generada" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["sessionId", "sender", "text", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}/sessions/{sessionId}": {
+      "schema": "ChatSession",
+      "description": "Colección de sesiones de chat del usuario autenticado"
+    },
+    "/users/{userId}/sessions/{sessionId}/messages/{messageId}": {
+      "schema": "ChatMessage",
+      "description": "Subcolección de mensajes correspondientes a una sesión del usuario"
+    }
+  }
+}

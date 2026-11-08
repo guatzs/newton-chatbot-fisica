@@ -1,12 +1,14 @@
 import React from 'react';
 import { NewtonMascot } from './NewtonMascot';
-import { Camera, Mic, Compass, MessageSquare, Activity, BookOpen, Sparkles } from 'lucide-react';
+import { Compass, MessageSquare, Activity, BookOpen, Sun, Moon } from 'lucide-react';
 
 interface HeaderProps {
   activeTab: 'home' | 'chat' | 'simulators' | 'formulas';
   onSelectTab: (tab: 'home' | 'chat' | 'simulators' | 'formulas') => void;
   onOpenScanner: () => void;
   onOpenVoice: () => void;
+  isDark?: boolean;
+  onToggleTheme?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -14,6 +16,8 @@ export const Header: React.FC<HeaderProps> = ({
   onSelectTab,
   onOpenScanner,
   onOpenVoice,
+  isDark = false,
+  onToggleTheme,
 }) => {
   const getTabLabel = () => {
     switch (activeTab) {
@@ -32,7 +36,7 @@ export const Header: React.FC<HeaderProps> = ({
   const IconComponent = current.icon;
 
   return (
-    <header className="sticky top-0 z-20 bg-[#FFFBD9]/90 backdrop-blur-md border-b border-[#ADCA88]/40 px-3 sm:px-6 py-2.5 transition-all">
+    <header className="sticky top-0 z-20 bg-[#FFFBD9]/90 dark:bg-[#0F1A0F]/90 backdrop-blur-md border-b border-[#ADCA88]/40 dark:border-[#3C5A40]/40 px-3 sm:px-6 py-2.5 transition-colors duration-200">
       <div className="max-w-7xl mx-auto flex items-center justify-between">
         {/* Mobile Left: Mascot & Brand (visible only on mobile md:hidden) */}
         <div 
@@ -42,14 +46,14 @@ export const Header: React.FC<HeaderProps> = ({
           <NewtonMascot size={36} mood="happy" animated />
           <div>
             <div className="flex items-center gap-1.5">
-              <span className="font-['Pixelify_Sans'] text-lg font-bold text-[#546C37] tracking-tight group-hover:text-[#941C2F] transition-colors">
+              <span className="font-['Pixelify_Sans'] text-lg font-bold text-[#546C37] dark:text-[#CFE3A8] tracking-tight group-hover:text-[#941C2F] dark:group-hover:text-[#FF9FAE] transition-colors">
                 Newton AI
               </span>
-              <span className="text-[10px] bg-[#D6E3B1] text-[#546C37] px-2 py-0.5 rounded-full font-bold">
+              <span className="text-[10px] bg-[#D6E3B1] dark:bg-[#24402B] text-[#546C37] dark:text-[#CFE3A8] px-2 py-0.5 rounded-full font-bold">
                 UCSUR
               </span>
             </div>
-            <p className="text-[10px] text-[#546C37]/80 font-['Space_Grotesk'] leading-none">
+            <p className="text-[10px] text-[#546C37]/80 dark:text-[#CFE3A8]/80 font-['Space_Grotesk'] leading-none">
               Física Aplicada • 2026-I
             </p>
           </div>
@@ -57,49 +61,40 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Desktop Left: Breadcrumb / Active Context Header */}
         <div className="hidden md:flex items-center gap-3">
-          <div className="w-8 h-8 rounded-xl bg-[#D6E3B1]/70 border border-[#ADCA88]/60 flex items-center justify-center text-[#546C37]">
-            <IconComponent className="w-4 h-4 text-[#546C37]" />
+          <div className="w-8 h-8 rounded-xl bg-[#D6E3B1]/70 dark:bg-[#24402B]/70 border border-[#ADCA88]/60 dark:border-[#3C5A40]/60 flex items-center justify-center text-[#546C37] dark:text-[#CFE3A8]">
+            <IconComponent className="w-4 h-4 text-[#546C37] dark:text-[#CFE3A8]" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-[10px] font-mono font-bold text-[#546C37]/70 uppercase tracking-wider">
+              <span className="text-[10px] font-mono font-bold text-[#546C37]/70 dark:text-[#CFE3A8]/70 uppercase tracking-wider">
                 {current.section}
               </span>
-              <span className="text-stone-400 text-xs">•</span>
-              <span className="text-xs font-bold text-[#546C37] font-['Space_Grotesk']">
+              <span className="text-stone-400 dark:text-stone-500 text-xs">•</span>
+              <span className="text-xs font-bold text-[#546C37] dark:text-[#CFE3A8] font-['Space_Grotesk']">
                 {current.title}
               </span>
             </div>
           </div>
         </div>
 
-        {/* Right: Quick Tools & Status */}
+        {/* Right block: compact theme toggle (especially on mobile) */}
         <div className="flex items-center gap-2">
-          {/* Quick scanner button */}
-          <button
-            onClick={onOpenScanner}
-            title="Escanear ejercicio con cámara"
-            className="p-2 rounded-xl bg-white/80 hover:bg-[#D6E3B1] border border-[#ADCA88]/50 text-[#546C37] transition-all shadow-2xs active:scale-95 flex items-center gap-1 text-xs font-semibold cursor-pointer"
-          >
-            <Camera className="w-4 h-4 text-[#546C37]" />
-            <span className="hidden sm:inline">Escanear</span>
-          </button>
-
-          {/* Quick Voice button */}
-          <button
-            onClick={onOpenVoice}
-            title="Dictar duda por voz"
-            className="p-2 rounded-xl bg-[#FA8989]/20 hover:bg-[#FA8989]/40 border border-[#FA8989]/50 text-[#941C2F] transition-all shadow-2xs active:scale-95 flex items-center gap-1 text-xs font-semibold cursor-pointer"
-          >
-            <Mic className="w-4 h-4 text-[#941C2F]" />
-            <span className="hidden sm:inline">Voz</span>
-          </button>
-
-          {/* Online indicator */}
-          <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-[#D6E3B1]/50 border border-[#ADCA88]/40 text-[11px] font-mono font-bold text-[#546C37]">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-            <span>En línea</span>
-          </div>
+          {onToggleTheme && (
+            <button
+              onClick={onToggleTheme}
+              role="switch"
+              aria-checked={isDark}
+              aria-label={isDark ? 'Cambiar a modo día' : 'Cambiar a modo noche'}
+              title={isDark ? 'Modo día' : 'Modo noche'}
+              className="md:hidden p-2 rounded-xl bg-white/80 dark:bg-[#16241A]/80 border border-[#ADCA88]/50 dark:border-[#3C5A40]/50 text-[#546C37] dark:text-[#CFE3A8] hover:bg-[#D6E3B1] dark:hover:bg-[#2F5237] transition-all shadow-2xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#546C37] dark:focus-visible:ring-[#6E8F47] cursor-pointer"
+            >
+              {isDark ? (
+                <Sun className="w-4 h-4 text-[#FA8989]" />
+              ) : (
+                <Moon className="w-4 h-4 text-[#546C37]" />
+              )}
+            </button>
+          )}
         </div>
       </div>
     </header>

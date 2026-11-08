@@ -15,9 +15,11 @@ import {
   saveMessageToStorage, 
   deleteSessionFromStorage 
 } from './firebase';
-import { Home, MessageSquare, Activity, User, BookOpen } from 'lucide-react';
+import { Home, MessageSquare, Activity, BookOpen } from 'lucide-react';
+import { useTheme } from './hooks/useTheme';
 
 export default function App() {
+  const { toggleTheme, isDark } = useTheme();
   const [activeTab, setActiveTab] = useState<'home' | 'chat' | 'simulators' | 'formulas'>('home');
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string>('');
@@ -44,7 +46,7 @@ export default function App() {
           setMessages([]);
         }
       } catch (err) {
-        console.warn('Error loading initial user sessions:', err);
+        console.warn('Error loading initial user sessions (using local state fallback):', err);
       }
     }
     loadInitial();
@@ -57,7 +59,7 @@ export default function App() {
     setActiveTab('chat');
   };
 
-  const handleCreateNewSession = async (title: string, moduleId: CourseModuleId = 'electrostatica'): Promise<string> => {
+  const handleCreateNewSession = (title: string, moduleId: CourseModuleId = 'electrostatica'): string => {
     const newId = `session-${Date.now()}`;
     const newSession: ChatSession = {
       id: newId,
@@ -69,7 +71,8 @@ export default function App() {
       messageCount: 0,
       lastMessage: '',
     };
-    await saveSessionToStorage(newSession);
+    // Non-blocking background save to storage (offline-tolerant)
+    saveSessionToStorage(newSession).catch(() => {});
     setSessions((prev) => [newSession, ...prev]);
     setCurrentSessionId(newId);
     setMessages([]);
@@ -83,9 +86,13 @@ export default function App() {
     initialMessages?: ChatMessage[],
     isVision = false
   ) => {
+    const timerId = `[Chat UI] handleSendMessage_${Date.now()}`;
+    console.time(timerId);
+    setIsLoading(true);
+
     let targetSessionId = explicitSessionId || currentSessionId;
     if (!targetSessionId) {
-      targetSessionId = await handleCreateNewSession(text.slice(0, 35) + '...');
+      targetSessionId = handleCreateNewSession(text.slice(0, 35) + '...');
     }
 
     const timeString = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -98,23 +105,24 @@ export default function App() {
       timestamp: timeString,
     };
 
-    // Determine the base messages for history and state (clean any error messages)
+    // Determine base messages for history and state (clean any previous error messages)
     const baseMessages = (initialMessages !== undefined ? initialMessages : messages).filter((m) => !m.isError);
 
+    // Update UI immediately with user message
     setMessages((prev) => {
       const base = (initialMessages !== undefined ? initialMessages : prev).filter((m) => !m.isError);
       return [...base, userMsg];
     });
-    await saveMessageToStorage(targetSessionId, userMsg);
 
-    setIsLoading(true);
+    // Non-blocking background save for user message
+    saveMessageToStorage(targetSessionId, userMsg).catch(() => {});
+
+    const isVisionRequest = isVision || Boolean(imageBase64);
 
     try {
-      const endpoint = isVision || imageBase64 ? '/api/vision' : '/api/chat';
-      let res: Response;
-
-      if (endpoint === '/api/vision') {
-        res = await fetch('/api/vision', {
+      if (isVisionRequest) {
+        // Non-streaming vision analysis flow (/api/vision)
+        const res = await fetch('/api/vision', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -123,19 +131,53 @@ export default function App() {
             imageMimeType: imageBase64?.startsWith('data:image/png') ? 'image/png' : 'image/jpeg',
           }),
         });
+
+        if (!res.ok) {
+          const errJson = await res.json().catch(() => ({}));
+          throw new Error(errJson.error || `Error ${res.status} en análisis visual`);
+        }
+
+        const data = await res.json();
+        const botTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+        const botMsg: ChatMessage = {
+          id: `bot-${Date.now()}`,
+          sessionId: targetSessionId,
+          sender: 'bot',
+          text: data.text,
+          quickChips: data.quickChips || [],
+          simulationType: data.simulationType,
+          timestamp: botTime,
+          diagramPrompt: data.diagramPrompt,
+          diagramLoading: Boolean(data.diagramPrompt),
+        };
+
+        setMessages((prev) => {
+          const clean = prev.filter((m) => !m.isError);
+          const hasUser = clean.some((m) => m.id === userMsg.id);
+          return hasUser ? [...clean, botMsg] : [...clean, userMsg, botMsg];
+        });
+
+        saveMessageToStorage(targetSessionId, botMsg).catch(() => {});
+
+        // Diagram fetching for vision result if proposed
+        if (data.diagramPrompt) {
+          triggerDiagramGeneration(botMsg.id, data.diagramPrompt);
+        }
+
+        persistSessionHeader(targetSessionId, data.text);
       } else {
-        // Build conversation history for context, strictly ensuring it starts with role 'user'
+        // SSE Streaming chat flow (/api/chat)
         let history = baseMessages.slice(-6).map((m) => ({
           role: m.sender === 'user' ? ('user' as const) : ('model' as const),
           parts: [{ text: m.text }],
         }));
 
-        // Trim leading 'model' messages so history always begins with 'user'
         while (history.length > 0 && history[0].role !== 'user') {
           history.shift();
         }
 
-        res = await fetch('/api/chat', {
+        const res = await fetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -145,117 +187,124 @@ export default function App() {
             imageMimeType: imageBase64?.startsWith('data:image/png') ? 'image/png' : 'image/jpeg',
           }),
         });
-      }
 
-      if (!res.ok) {
-        let errMessage = `Error de servidor (${res.status})`;
-        try {
-          const contentType = res.headers.get('content-type') || '';
-          if (contentType.includes('application/json')) {
+        if (!res.ok) {
+          let errMessage = `Error de servidor (${res.status})`;
+          try {
             const errJson = await res.json();
             if (errJson.error) errMessage = errJson.error;
-          } else {
-            const errText = await res.text();
-            if (errText.includes('<!doctype') || errText.includes('<html')) {
-              errMessage = 'El servidor no pudo procesar la solicitud en este momento.';
-            } else if (errText.trim()) {
-              errMessage = errText.slice(0, 150);
+          } catch (_) {}
+          throw new Error(errMessage);
+        }
+
+        const botId = `bot-${Date.now()}`;
+        const botTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+        const initialBotMsg: ChatMessage = {
+          id: botId,
+          sessionId: targetSessionId,
+          sender: 'bot',
+          text: '',
+          quickChips: [],
+          timestamp: botTime,
+        };
+
+        const reader = res.body?.getReader();
+        if (!reader) {
+          throw new Error('No se pudo iniciar el flujo de lectura del streaming.');
+        }
+
+        const decoder = new TextDecoder();
+        let accumulatedStreamText = '';
+        let sseBuffer = '';
+        let rafId: number | null = null;
+        let updateScheduled = false;
+
+        // Group live UI updates with requestAnimationFrame to prevent re-render bottlenecks
+        const scheduleUiUpdate = (currentText: string) => {
+          if (updateScheduled) return;
+          updateScheduled = true;
+          rafId = requestAnimationFrame(() => {
+            updateScheduled = false;
+            setMessages((prev) => {
+              const clean = prev.filter((m) => !m.isError);
+              const exists = clean.some((m) => m.id === botId);
+              if (exists) {
+                return clean.map((m) => (m.id === botId ? { ...m, text: currentText } : m));
+              } else {
+                return [...clean, { ...initialBotMsg, text: currentText }];
+              }
+            });
+          });
+        };
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          sseBuffer += decoder.decode(value, { stream: true });
+          const lines = sseBuffer.split('\n');
+          sseBuffer = lines.pop() || '';
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed || !trimmed.startsWith('data:')) continue;
+            const payloadRaw = trimmed.slice(5).trim();
+            if (!payloadRaw) continue;
+
+            try {
+              const eventData = JSON.parse(payloadRaw);
+
+              if (eventData.type === 'chunk' && eventData.text) {
+                accumulatedStreamText += eventData.text;
+                scheduleUiUpdate(accumulatedStreamText);
+              } else if (eventData.type === 'done') {
+                if (rafId) cancelAnimationFrame(rafId);
+                updateScheduled = false;
+
+                const finalCleanText = eventData.text || accumulatedStreamText;
+                const finalBotMsg: ChatMessage = {
+                  id: botId,
+                  sessionId: targetSessionId,
+                  sender: 'bot',
+                  text: finalCleanText,
+                  quickChips: eventData.quickChips || [],
+                  simulationType: eventData.simulationType,
+                  timestamp: botTime,
+                  diagramPrompt: eventData.diagramPrompt,
+                  diagramLoading: Boolean(eventData.diagramPrompt),
+                };
+
+                setMessages((prev) => {
+                  const clean = prev.filter((m) => !m.isError);
+                  const exists = clean.some((m) => m.id === botId);
+                  if (exists) {
+                    return clean.map((m) => (m.id === botId ? finalBotMsg : m));
+                  } else {
+                    return [...clean, finalBotMsg];
+                  }
+                });
+
+                // Background save of finished bot message
+                saveMessageToStorage(targetSessionId, finalBotMsg).catch(() => {});
+
+                // If diagram prompt was generated, call /api/diagram
+                if (eventData.diagramPrompt) {
+                  triggerDiagramGeneration(botId, eventData.diagramPrompt);
+                }
+
+                persistSessionHeader(targetSessionId, finalCleanText);
+              } else if (eventData.type === 'error') {
+                throw new Error(eventData.error || 'Error en streaming de respuesta');
+              }
+            } catch (pErr: any) {
+              if (pErr?.message && !pErr.message.includes('JSON')) {
+                throw pErr;
+              }
             }
           }
-        } catch (_) {}
-        throw new Error(errMessage);
-      }
-
-      const contentType = res.headers.get('content-type') || '';
-      if (!contentType.includes('application/json')) {
-        throw new Error('Respuesta inesperada del servidor (no es JSON válido).');
-      }
-
-      const data = await res.json();
-      const botTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-      const botMsg: ChatMessage = {
-        id: `bot-${Date.now()}`,
-        sessionId: targetSessionId,
-        sender: 'bot',
-        text: data.text,
-        quickChips: data.quickChips || [],
-        simulationType: data.simulationType,
-        timestamp: botTime,
-        diagramPrompt: data.diagramPrompt,
-        diagramLoading: Boolean(data.diagramPrompt),
-      };
-
-      setMessages((prev) => {
-        const clean = prev.filter((m) => !m.isError);
-        const hasUser = clean.some((m) => m.id === userMsg.id);
-        return hasUser ? [...clean, botMsg] : [...clean, userMsg, botMsg];
-      });
-      await saveMessageToStorage(targetSessionId, botMsg);
-
-      // If Gemini suggested a diagram or user requested one, fetch /api/diagram with Imagen
-      if (data.diagramPrompt) {
-        fetch('/api/diagram', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt: data.diagramPrompt }),
-        })
-          .then(async (diagramRes) => {
-            if (!diagramRes.ok) {
-              const errBody = await diagramRes.json().catch(() => ({}));
-              throw new Error(errBody.error || `HTTP ${diagramRes.status}`);
-            }
-            return diagramRes.json();
-          })
-          .then((diagramData) => {
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === botMsg.id
-                  ? {
-                      ...m,
-                      diagramLoading: false,
-                      diagramUrl: diagramData.imageUrl,
-                      diagramError: undefined,
-                    }
-                  : m
-              )
-            );
-          })
-          .catch((diagramErr: any) => {
-            console.warn('Diagram generation failed:', diagramErr);
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === botMsg.id
-                  ? {
-                      ...m,
-                      diagramLoading: false,
-                      diagramError:
-                        'No se pudo generar el diagrama visual con Imagen. Puedes continuar con el análisis analítico o reintentarlo.',
-                    }
-                  : m
-              )
-            );
-          });
-      }
-
-      // Update session header using functional state updater
-      setSessions((prev) => {
-        const idx = prev.findIndex((s) => s.id === targetSessionId);
-        if (idx >= 0) {
-          const cur = prev[idx];
-          const updated: ChatSession = {
-            ...cur,
-            updatedAt: new Date().toISOString(),
-            messageCount: (cur.messageCount || 0) + 2,
-            lastMessage: data.text.slice(0, 70) + '...',
-          };
-          saveSessionToStorage(updated);
-          const updatedList = [...prev];
-          updatedList[idx] = updated;
-          return updatedList;
         }
-        return prev;
-      });
+      }
     } catch (err: any) {
       console.error('Error contacting Newton AI:', err);
       const errorTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -274,9 +323,78 @@ export default function App() {
         const hasUser = clean.some((m) => m.id === userMsg.id);
         return hasUser ? [...clean, errorMsg] : [...clean, userMsg, errorMsg];
       });
-      // Do not save errorMsg to Firestore
     } finally {
+      console.timeEnd(timerId);
       setIsLoading(false);
+    }
+  };
+
+  const triggerDiagramGeneration = (messageId: string, diagramPrompt: string) => {
+    fetch('/api/diagram', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt: diagramPrompt }),
+    })
+      .then(async (diagramRes) => {
+        if (!diagramRes.ok) {
+          const errBody = await diagramRes.json().catch(() => ({}));
+          throw new Error(errBody.error || `HTTP ${diagramRes.status}`);
+        }
+        return diagramRes.json();
+      })
+      .then((diagramData) => {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === messageId
+              ? {
+                  ...m,
+                  diagramLoading: false,
+                  diagramUrl: diagramData.imageUrl,
+                  diagramError: undefined,
+                }
+              : m
+          )
+        );
+      })
+      .catch((diagramErr: any) => {
+        console.warn('Diagram generation failed:', diagramErr);
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === messageId
+              ? {
+                  ...m,
+                  diagramLoading: false,
+                  diagramError:
+                    'No se pudo generar el diagrama visual. Puedes continuar con el análisis analítico o reintentarlo.',
+                }
+              : m
+          )
+        );
+      });
+  };
+
+  const persistSessionHeader = (targetSessionId: string, previewText: string) => {
+    let sessionToSave: ChatSession | null = null;
+    setSessions((prev) => {
+      const idx = prev.findIndex((s) => s.id === targetSessionId);
+      if (idx >= 0) {
+        const cur = prev[idx];
+        const updated: ChatSession = {
+          ...cur,
+          updatedAt: new Date().toISOString(),
+          messageCount: (cur.messageCount || 0) + 2,
+          lastMessage: previewText.slice(0, 70) + '...',
+        };
+        sessionToSave = updated;
+        const updatedList = [...prev];
+        updatedList[idx] = updated;
+        return updatedList;
+      }
+      return prev;
+    });
+
+    if (sessionToSave) {
+      saveSessionToStorage(sessionToSave).catch(() => {});
     }
   };
 
@@ -323,7 +441,7 @@ export default function App() {
   };
 
   const handleStartChatWithPrompt = async (prompt: string, moduleId: CourseModuleId = 'electrostatica') => {
-    const newSessionId = await handleCreateNewSession(prompt.slice(0, 32) + '...', moduleId);
+    const newSessionId = handleCreateNewSession(prompt.slice(0, 32) + '...', moduleId);
     setActiveTab('chat');
     await handleSendMessage(prompt, undefined, newSessionId, []);
   };
@@ -332,13 +450,13 @@ export default function App() {
     const title = data.userNote && data.userNote.trim()
       ? `Escaneo: ${data.userNote.slice(0, 24)}...`
       : 'Ejercicio Escaneado';
-    const newSessionId = await handleCreateNewSession(title);
+    const newSessionId = handleCreateNewSession(title);
     setActiveTab('chat');
     await handleSendMessage(data.prompt, data.imageBase64, newSessionId, [], true);
   };
 
   const handleVoiceSubmit = async (prompt: string) => {
-    const newSessionId = await handleCreateNewSession(`Dictado: ${prompt.slice(0, 24)}...`);
+    const newSessionId = handleCreateNewSession(`Dictado: ${prompt.slice(0, 24)}...`);
     setActiveTab('chat');
     await handleSendMessage(prompt, undefined, newSessionId, []);
   };
@@ -349,7 +467,7 @@ export default function App() {
   };
 
   const handleDeleteSession = async (sessionId: string) => {
-    await deleteSessionFromStorage(sessionId);
+    deleteSessionFromStorage(sessionId).catch(() => {});
     setSessions((prev) => prev.filter((s) => s.id !== sessionId));
     if (currentSessionId === sessionId) {
       setMessages([]);
@@ -360,7 +478,7 @@ export default function App() {
   const currentSession = sessions.find((s) => s.id === currentSessionId);
 
   return (
-    <div className="min-h-screen bg-[#FFFBD9] text-[#546C37] font-['Space_Grotesk'] flex flex-col selection:bg-[#FDC2B1] selection:text-[#941C2F]">
+    <div className="min-h-screen bg-[#FFFBD9] dark:bg-[#0F1A0F] text-[#546C37] dark:text-[#CFE3A8] font-['Space_Grotesk'] flex flex-col selection:bg-[#FDC2B1] dark:selection:bg-[#4A2530] selection:text-[#941C2F] dark:selection:text-[#FF9FAE] transition-colors duration-200">
       {/* Desktop Fixed Left Sidebar Navigation */}
       <Sidebar
         activeTab={activeTab}
@@ -372,19 +490,23 @@ export default function App() {
         onDeleteSession={handleDeleteSession}
         onOpenScanner={() => setIsScannerOpen(true)}
         onOpenVoice={() => setIsVoiceOpen(true)}
+        isDark={isDark}
+        onToggleTheme={toggleTheme}
       />
 
-      {/* Top Header: shows mobile brand on small screens; on desktop offsets with md:pl-64 */}
+      {/* Top Header */}
       <div className="md:pl-64">
         <Header
           activeTab={activeTab}
           onSelectTab={setActiveTab}
           onOpenScanner={() => setIsScannerOpen(true)}
           onOpenVoice={() => setIsVoiceOpen(true)}
+          isDark={isDark}
+          onToggleTheme={toggleTheme}
         />
       </div>
 
-      {/* Main Content Area: offsets by md:pl-64 on desktop */}
+      {/* Main Content Area */}
       <main className={`flex-1 flex flex-col md:pl-64 ${activeTab === 'chat' ? 'pb-0' : 'pb-16'} md:pb-0`}>
         {activeTab === 'home' && (
           <HomeView
@@ -437,12 +559,14 @@ export default function App() {
         )}
       </main>
 
-      {/* Mobile Bottom Tab Bar (matching MovilHome.png & ChatActivoMovil.png) */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#FFFBD9]/95 backdrop-blur-md border-t border-[#ADCA88]/50 px-6 py-2 flex items-center justify-around shadow-lg">
+      {/* Mobile Bottom Tab Bar */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#FFFBD9]/95 dark:bg-[#0F1A0F]/95 backdrop-blur-md border-t border-[#ADCA88]/50 dark:border-[#3C5A40]/50 px-6 py-2 flex items-center justify-around shadow-lg transition-colors duration-200">
         <button
           onClick={() => setActiveTab('home')}
           className={`p-2 rounded-2xl flex flex-col items-center gap-0.5 transition-all ${
-            activeTab === 'home' ? 'text-[#941C2F] bg-[#D6E3B1]/60 font-bold' : 'text-[#546C37]/70'
+            activeTab === 'home' 
+              ? 'text-[#941C2F] dark:text-[#FF9FAE] bg-[#D6E3B1]/60 dark:bg-[#24402B]/60 font-bold' 
+              : 'text-[#546C37]/70 dark:text-[#CFE3A8]/70'
           }`}
         >
           <Home className="w-5 h-5" />
@@ -452,7 +576,9 @@ export default function App() {
         <button
           onClick={() => setActiveTab('chat')}
           className={`p-2 rounded-2xl flex flex-col items-center gap-0.5 transition-all relative ${
-            activeTab === 'chat' ? 'text-[#941C2F] bg-[#D6E3B1]/60 font-bold' : 'text-[#546C37]/70'
+            activeTab === 'chat' 
+              ? 'text-[#941C2F] dark:text-[#FF9FAE] bg-[#D6E3B1]/60 dark:bg-[#24402B]/60 font-bold' 
+              : 'text-[#546C37]/70 dark:text-[#CFE3A8]/70'
           }`}
         >
           <MessageSquare className="w-5 h-5" />
@@ -465,7 +591,9 @@ export default function App() {
         <button
           onClick={() => setActiveTab('simulators')}
           className={`p-2 rounded-2xl flex flex-col items-center gap-0.5 transition-all ${
-            activeTab === 'simulators' ? 'text-[#941C2F] bg-[#D6E3B1]/60 font-bold' : 'text-[#546C37]/70'
+            activeTab === 'simulators' 
+              ? 'text-[#941C2F] dark:text-[#FF9FAE] bg-[#D6E3B1]/60 dark:bg-[#24402B]/60 font-bold' 
+              : 'text-[#546C37]/70 dark:text-[#CFE3A8]/70'
           }`}
         >
           <Activity className="w-5 h-5" />
@@ -475,7 +603,9 @@ export default function App() {
         <button
           onClick={() => setActiveTab('formulas')}
           className={`p-2 rounded-2xl flex flex-col items-center gap-0.5 transition-all ${
-            activeTab === 'formulas' ? 'text-[#941C2F] bg-[#D6E3B1]/60 font-bold' : 'text-[#546C37]/70'
+            activeTab === 'formulas' 
+              ? 'text-[#941C2F] dark:text-[#FF9FAE] bg-[#D6E3B1]/60 dark:bg-[#24402B]/60 font-bold' 
+              : 'text-[#546C37]/70 dark:text-[#CFE3A8]/70'
           }`}
         >
           <BookOpen className="w-5 h-5" />

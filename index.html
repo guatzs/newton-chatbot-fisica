@@ -10,12 +10,26 @@
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
 
+    <!-- Script anti-parpadeo para modo oscuro -->
+    <script>
+      (function() {
+        try {
+          var stored = localStorage.getItem('newton_theme_v1');
+          if (stored === 'dark' || (!stored && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark');
+          } else {
+            document.documentElement.classList.remove('dark');
+          }
+        } catch (e) {}
+      })();
+    </script>
+
     <!-- Google Fonts: Pixelify Sans and Space Grotesk -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400..700&family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   </head>
-  <body class="bg-[#FFFBD9] text-[#546C37] antialiased selection:bg-[#FDC2B1] selection:text-[#941C2F]">
+  <body class="bg-[#FFFBD9] dark:bg-[#0F1A0F] text-[#546C37] dark:text-[#CFE3A8] antialiased selection:bg-[#FDC2B1] dark:selection:bg-[#4A2530] selection:text-[#941C2F] dark:selection:text-[#FF9FAE] transition-colors duration-200">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

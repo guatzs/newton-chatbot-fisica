@@ -44,29 +44,29 @@ export const SphericalConductorSim: React.FC<SphericalConductorSimProps> = ({
   const angles = Array.from({ length: 12 }, (_, i) => (i * 360) / 12);
 
   return (
-    <div className={`bg-white/90 backdrop-blur-sm rounded-3xl p-4 border border-[#ADCA88]/40 shadow-sm ${compact ? 'max-w-md' : 'w-full'}`}>
+    <div className={`bg-white/90 dark:bg-[#16241A]/90 backdrop-blur-sm rounded-3xl p-4 border border-[#ADCA88]/40 dark:border-[#3C5A40]/40 shadow-sm ${compact ? 'max-w-md' : 'w-full'}`}>
       {/* Header tags */}
       <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
         <div className="flex items-center gap-2">
-          <div className="w-6 h-6 rounded-full bg-[#546C37] text-white flex items-center justify-center text-xs font-bold">
+          <div className="w-6 h-6 rounded-full bg-[#546C37] dark:bg-[#6E8F47] text-white flex items-center justify-center text-xs font-bold">
             <Zap className="w-3.5 h-3.5" />
           </div>
-          <span className="font-semibold text-xs text-[#546C37] uppercase tracking-wider font-['Pixelify_Sans']">
+          <span className="font-semibold text-xs text-[#546C37] dark:text-[#CFE3A8] uppercase tracking-wider font-['Pixelify_Sans']">
             Simulador de Conductor en Equilibrio
           </span>
         </div>
         <div className="flex items-center gap-1.5 text-[11px] font-medium">
-          <span className="bg-[#D6E3B1] text-[#546C37] px-2.5 py-0.5 rounded-full">
+          <span className="bg-[#D6E3B1] dark:bg-[#24402B] text-[#546C37] dark:text-[#CFE3A8] px-2.5 py-0.5 rounded-full">
             Simetría Radial Esférica
           </span>
-          <span className={`px-2.5 py-0.5 rounded-full font-bold ${isPositive ? 'bg-[#FA8989]/30 text-[#941C2F]' : 'bg-blue-100 text-blue-800'}`}>
+          <span className={`px-2.5 py-0.5 rounded-full font-bold ${isPositive ? 'bg-[#FA8989]/30 text-[#941C2F] dark:text-[#FF9FAE]' : 'bg-blue-100 dark:bg-blue-950/60 text-blue-800 dark:text-blue-300'}`}>
             Carga Q = {charge > 0 ? `+${charge}` : charge} µC
           </span>
         </div>
       </div>
 
       {/* Interactive Visual Graphic */}
-      <div className="relative bg-[#FFFBD9]/70 rounded-2xl p-2 flex flex-col items-center justify-center border border-[#ADCA88]/20 overflow-hidden">
+      <div className="relative bg-[#FFFBD9]/70 dark:bg-[#0F1A0F]/70 rounded-2xl p-2 flex flex-col items-center justify-center border border-[#ADCA88]/20 dark:border-[#3C5A40]/20 overflow-hidden">
         <svg viewBox="0 0 300 300" className="w-full max-w-[280px] h-[260px] select-none">
           <defs>
             <radialGradient id="conductorGrad" cx="50%" cy="50%" r="50%">
@@ -97,7 +97,7 @@ export const SphericalConductorSim: React.FC<SphericalConductorSimProps> = ({
                   y1={y1}
                   x2={x2}
                   y2={y2}
-                  stroke="#941C2F"
+                  className="stroke-[#941C2F] dark:stroke-[#FF9FAE]"
                   strokeWidth="1.5"
                   strokeDasharray="4 2"
                   opacity={Math.abs(charge) > 0 ? 0.75 : 0.2}
@@ -108,7 +108,7 @@ export const SphericalConductorSim: React.FC<SphericalConductorSimProps> = ({
                     cx={arrowX}
                     cy={arrowY}
                     r={2.5}
-                    fill="#941C2F"
+                    className="fill-[#941C2F] dark:fill-[#FF9FAE]"
                   />
                 )}
                 <line
@@ -116,7 +116,7 @@ export const SphericalConductorSim: React.FC<SphericalConductorSimProps> = ({
                   y1={y2}
                   x2={x2 + Math.cos(rad) * 4}
                   y2={y2 + Math.sin(rad) * 4}
-                  stroke="#941C2F"
+                  className="stroke-[#941C2F] dark:stroke-[#FF9FAE]"
                   strokeWidth="2"
                 />
               </g>
@@ -131,7 +131,7 @@ export const SphericalConductorSim: React.FC<SphericalConductorSimProps> = ({
             fill="url(#conductorGrad)"
             stroke="#546C37"
             strokeWidth="3"
-            className="cursor-pointer transition-all duration-300"
+            className="cursor-pointer transition-all duration-300 dark:stroke-[#6E8F47]"
             onClick={() => setSelectedZone('surface')}
           />
 
@@ -144,7 +144,7 @@ export const SphericalConductorSim: React.FC<SphericalConductorSimProps> = ({
             stroke="#941C2F"
             strokeWidth="1.5"
             strokeDasharray="3 3"
-            className="cursor-pointer"
+            className="cursor-pointer dark:stroke-[#FF9FAE]"
             onClick={() => setSelectedZone('interior')}
           />
 
@@ -175,7 +175,7 @@ export const SphericalConductorSim: React.FC<SphericalConductorSimProps> = ({
             x={center}
             y={center - 10}
             textAnchor="middle"
-            className="font-bold text-[13px] fill-[#941C2F] font-['Space_Grotesk']"
+            className="font-bold text-[13px] fill-[#941C2F] dark:fill-[#FF9FAE] font-['Space_Grotesk']"
           >
             E = 0 interior
           </text>
@@ -183,7 +183,7 @@ export const SphericalConductorSim: React.FC<SphericalConductorSimProps> = ({
             x={center}
             y={center + 5}
             textAnchor="middle"
-            className="text-[9px] fill-[#546C37] font-medium"
+            className="text-[9px] fill-[#546C37] dark:fill-[#CFE3A8] font-medium"
           >
             Q_enc = 0 (r &lt; R)
           </text>
@@ -191,7 +191,7 @@ export const SphericalConductorSim: React.FC<SphericalConductorSimProps> = ({
             x={center}
             y={center + 18}
             textAnchor="middle"
-            className="text-[9px] fill-[#546C37] font-semibold"
+            className="text-[9px] fill-[#546C37] dark:fill-[#CFE3A8] font-semibold"
           >
             V = {vSurface_kV} kV (Cte)
           </text>
@@ -200,37 +200,37 @@ export const SphericalConductorSim: React.FC<SphericalConductorSimProps> = ({
           <text
             x={240}
             y={50}
-            className="text-[9px] font-semibold fill-[#941C2F]"
+            className="text-[9px] font-semibold fill-[#941C2F] dark:fill-[#FF9FAE]"
           >
             E(r) ∝ 1/r²
           </text>
         </svg>
 
         {/* Dynamic Zone Inspector Box */}
-        <div className="w-full bg-white/95 rounded-xl p-2.5 mt-1 border border-[#ADCA88]/30 flex flex-wrap items-center justify-between text-xs gap-1">
+        <div className="w-full bg-white/95 dark:bg-[#16241A]/95 rounded-xl p-2.5 mt-1 border border-[#ADCA88]/30 dark:border-[#3C5A40]/30 flex flex-wrap items-center justify-between text-xs gap-1">
           <div className="flex items-center gap-1.5">
-            <span className="font-semibold text-[#546C37]">Zona evaluada:</span>
+            <span className="font-semibold text-[#546C37] dark:text-[#CFE3A8]">Zona evaluada:</span>
             <div className="flex gap-1 text-[11px]">
               <button
                 onClick={() => setSelectedZone('interior')}
-                className={`px-2 py-0.5 rounded-full transition-colors ${
-                  selectedZone === 'interior' ? 'bg-[#941C2F] text-white font-bold' : 'bg-[#D6E3B1]/50 text-[#546C37]'
+                className={`px-2 py-0.5 rounded-full transition-colors cursor-pointer ${
+                  selectedZone === 'interior' ? 'bg-[#941C2F] dark:bg-[#C0334A] text-white font-bold' : 'bg-[#D6E3B1]/50 dark:bg-[#24402B]/50 text-[#546C37] dark:text-[#CFE3A8]'
                 }`}
               >
                 r &lt; R (Interior)
               </button>
               <button
                 onClick={() => setSelectedZone('surface')}
-                className={`px-2 py-0.5 rounded-full transition-colors ${
-                  selectedZone === 'surface' ? 'bg-[#941C2F] text-white font-bold' : 'bg-[#D6E3B1]/50 text-[#546C37]'
+                className={`px-2 py-0.5 rounded-full transition-colors cursor-pointer ${
+                  selectedZone === 'surface' ? 'bg-[#941C2F] dark:bg-[#C0334A] text-white font-bold' : 'bg-[#D6E3B1]/50 dark:bg-[#24402B]/50 text-[#546C37] dark:text-[#CFE3A8]'
                 }`}
               >
                 r = R (Borde)
               </button>
               <button
                 onClick={() => setSelectedZone('exterior')}
-                className={`px-2 py-0.5 rounded-full transition-colors ${
-                  selectedZone === 'exterior' ? 'bg-[#941C2F] text-white font-bold' : 'bg-[#D6E3B1]/50 text-[#546C37]'
+                className={`px-2 py-0.5 rounded-full transition-colors cursor-pointer ${
+                  selectedZone === 'exterior' ? 'bg-[#941C2F] dark:bg-[#C0334A] text-white font-bold' : 'bg-[#D6E3B1]/50 dark:bg-[#24402B]/50 text-[#546C37] dark:text-[#CFE3A8]'
                 }`}
               >
                 r &gt; R (Exterior)
@@ -238,7 +238,7 @@ export const SphericalConductorSim: React.FC<SphericalConductorSimProps> = ({
             </div>
           </div>
 
-          <div className="text-[#546C37] font-mono text-[11px] bg-[#FFFBD9] px-2 py-0.5 rounded border border-[#ADCA88]/40">
+          <div className="text-[#546C37] dark:text-[#CFE3A8] font-mono text-[11px] bg-[#FFFBD9] dark:bg-[#0F1A0F] px-2 py-0.5 rounded border border-[#ADCA88]/40 dark:border-[#3C5A40]/40">
             {selectedZone === 'interior' && 'E = 0 N/C | ρ = 0'}
             {selectedZone === 'surface' && `σ = ${sigmaMicroC_m2} µC/m² | E = ${eSurface_kN_C} kN/C`}
             {selectedZone === 'exterior' && `E(r) = k·Q / r² (Radial)`}
@@ -249,7 +249,7 @@ export const SphericalConductorSim: React.FC<SphericalConductorSimProps> = ({
       {/* Sliders & Controls */}
       <div className="mt-3 space-y-2.5">
         <div className="flex items-center justify-between text-xs">
-          <span className="font-medium text-[#546C37]">Radio esfera R:</span>
+          <span className="font-medium text-[#546C37] dark:text-[#CFE3A8]">Radio esfera R:</span>
           <div className="flex items-center gap-3">
             <input
               type="range"
@@ -257,16 +257,16 @@ export const SphericalConductorSim: React.FC<SphericalConductorSimProps> = ({
               max="25"
               value={radius}
               onChange={(e) => setRadius(Number(e.target.value))}
-              className="accent-[#546C37] w-28 cursor-pointer"
+              className="accent-[#546C37] dark:accent-[#8FB35E] w-28 cursor-pointer"
             />
-            <span className="font-bold text-[#546C37] w-12 text-right font-['Pixelify_Sans']">
+            <span className="font-bold text-[#546C37] dark:text-[#CFE3A8] w-12 text-right font-['Pixelify_Sans']">
               {radius} cm
             </span>
           </div>
         </div>
 
         <div className="flex items-center justify-between text-xs">
-          <span className="font-medium text-[#546C37]">Carga neta Q:</span>
+          <span className="font-medium text-[#546C37] dark:text-[#CFE3A8]">Carga neta Q:</span>
           <div className="flex items-center gap-3">
             <input
               type="range"
@@ -277,24 +277,24 @@ export const SphericalConductorSim: React.FC<SphericalConductorSimProps> = ({
               onChange={(e) => setCharge(Number(e.target.value))}
               className="accent-[#FA8989] w-28 cursor-pointer"
             />
-            <span className="font-bold text-[#941C2F] w-12 text-right font-['Pixelify_Sans']">
+            <span className="font-bold text-[#941C2F] dark:text-[#FF9FAE] w-12 text-right font-['Pixelify_Sans']">
               {charge > 0 ? `+${charge}` : charge} µC
             </span>
           </div>
         </div>
 
-        {/* Buttons row matching mockup */}
+        {/* Buttons row */}
         <div className="flex items-center gap-2 pt-1">
           <button
             onClick={() => setCharge((prev) => -prev)}
-            className="flex-1 py-1.5 px-3 bg-[#D6E3B1] hover:bg-[#ADCA88] text-[#546C37] rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors"
+            className="flex-1 py-1.5 px-3 bg-[#D6E3B1] dark:bg-[#24402B] hover:bg-[#ADCA88] dark:hover:bg-[#3C5A40] text-[#546C37] dark:text-[#CFE3A8] rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
           >
             <RefreshCw className="w-3.5 h-3.5" />
             Invertir polaridad ({charge >= 0 ? '−' : '+'})
           </button>
           <button
             onClick={() => setAnimating(!animating)}
-            className="flex-1 py-1.5 px-3 bg-[#941C2F] hover:bg-[#941C2F]/90 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors shadow-sm"
+            className="flex-1 py-1.5 px-3 bg-[#941C2F] dark:bg-[#C0334A] hover:bg-[#941C2F]/90 dark:hover:bg-[#C0334A]/90 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors shadow-sm cursor-pointer"
           >
             {animating ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
             {animating ? 'Pausar Flujo' : 'Animar Flujo'}

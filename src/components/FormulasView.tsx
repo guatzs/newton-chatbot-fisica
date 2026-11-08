@@ -33,31 +33,31 @@ export const FormulasView: React.FC<FormulasViewProps> = ({ onAskAboutFormula })
   return (
     <div className="max-w-5xl mx-auto px-4 py-6 space-y-6 animate-in fade-in duration-300">
       {/* Header */}
-      <div className="bg-[#FFFBD9] rounded-3xl p-5 border-2 border-[#ADCA88]/50 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+      <div className="bg-[#FFFBD9] dark:bg-[#0F1A0F] rounded-3xl p-5 border-2 border-[#ADCA88]/50 dark:border-[#3C5A40]/50 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <span className="bg-[#D6E3B1] text-[#546C37] px-2.5 py-0.5 rounded-full text-xs font-bold font-mono">
+            <span className="bg-[#D6E3B1] dark:bg-[#24402B] text-[#546C37] dark:text-[#CFE3A8] px-2.5 py-0.5 rounded-full text-xs font-bold font-mono">
               COMPENDIO OFICIAL
             </span>
-            <span className="text-xs text-[#546C37]/80">Física Aplicada • UCSUR</span>
+            <span className="text-xs text-[#546C37]/80 dark:text-[#CFE3A8]/80">Física Aplicada • UCSUR</span>
           </div>
-          <h1 className="text-2xl font-bold text-[#546C37] font-['Pixelify_Sans'] mt-1">
+          <h1 className="text-2xl font-bold text-[#546C37] dark:text-[#CFE3A8] font-['Pixelify_Sans'] mt-1">
             Explorador de Fórmulas y Constantes
           </h1>
-          <p className="text-xs text-[#546C37]/80 font-['Space_Grotesk'] mt-0.5">
+          <p className="text-xs text-[#546C37]/80 dark:text-[#CFE3A8]/80 font-['Space_Grotesk'] mt-0.5">
             Ecuaciones fundamentales, definiciones de variables en el Sistema Internacional y constantes físicas.
           </p>
         </div>
 
         {/* Search */}
         <div className="w-full sm:w-72 relative">
-          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#546C37]/50" />
+          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#546C37]/50 dark:text-[#CFE3A8]/50" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Buscar por ley, variable o tema..."
-            className="w-full bg-white pl-9 pr-3 py-2 rounded-2xl border border-[#ADCA88] text-xs text-[#546C37] placeholder-[#546C37]/50 focus:outline-none focus:ring-1 focus:ring-[#546C37]"
+            className="w-full bg-white dark:bg-[#16241A] pl-9 pr-3 py-2 rounded-2xl border border-[#ADCA88] dark:border-[#3C5A40] text-xs text-[#546C37] dark:text-[#CFE3A8] placeholder-[#546C37]/50 dark:placeholder-[#CFE3A8]/50 focus:outline-none focus:ring-1 focus:ring-[#546C37] dark:focus:ring-[#6E8F47]"
           />
         </div>
       </div>
@@ -66,10 +66,10 @@ export const FormulasView: React.FC<FormulasViewProps> = ({ onAskAboutFormula })
       <div className="flex flex-wrap gap-2">
         <button
           onClick={() => setSelectedModule('all')}
-          className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+          className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
             selectedModule === 'all'
-              ? 'bg-[#546C37] text-white shadow-sm'
-              : 'bg-[#D6E3B1]/60 text-[#546C37] hover:bg-[#D6E3B1]'
+              ? 'bg-[#546C37] dark:bg-[#6E8F47] text-white shadow-sm'
+              : 'bg-[#D6E3B1]/60 dark:bg-[#24402B]/60 text-[#546C37] dark:text-[#CFE3A8] hover:bg-[#D6E3B1] dark:hover:bg-[#24402B]'
           }`}
         >
           Todas las fórmulas
@@ -78,10 +78,10 @@ export const FormulasView: React.FC<FormulasViewProps> = ({ onAskAboutFormula })
           <button
             key={mod.id}
             onClick={() => setSelectedModule(mod.id)}
-            className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
               selectedModule === mod.id
-                ? 'bg-[#546C37] text-white shadow-sm'
-                : 'bg-[#D6E3B1]/60 text-[#546C37] hover:bg-[#D6E3B1]'
+                ? 'bg-[#546C37] dark:bg-[#6E8F47] text-white shadow-sm'
+                : 'bg-[#D6E3B1]/60 dark:bg-[#24402B]/60 text-[#546C37] dark:text-[#CFE3A8] hover:bg-[#D6E3B1] dark:hover:bg-[#24402B]'
             }`}
           >
             {mod.badge}: {mod.title}
@@ -94,32 +94,32 @@ export const FormulasView: React.FC<FormulasViewProps> = ({ onAskAboutFormula })
         {filteredFormulas.map((f) => (
           <div
             key={f.id}
-            className="bg-white rounded-3xl p-5 border border-[#ADCA88]/50 shadow-xs hover:shadow-sm transition-all flex flex-col justify-between"
+            className="bg-white dark:bg-[#16241A] rounded-3xl p-5 border border-[#ADCA88]/50 dark:border-[#3C5A40]/50 shadow-xs hover:shadow-sm transition-all flex flex-col justify-between"
           >
             <div>
               <div className="flex items-center justify-between mb-2">
-                <span className="text-[10px] uppercase font-bold font-mono px-2 py-0.5 rounded-full bg-[#D6E3B1] text-[#546C37]">
+                <span className="text-[10px] uppercase font-bold font-mono px-2 py-0.5 rounded-full bg-[#D6E3B1] dark:bg-[#24402B] text-[#546C37] dark:text-[#CFE3A8]">
                   {f.moduleId}
                 </span>
                 <button
                   onClick={() => handleCopy(f.id, f.latex)}
-                  className="text-xs text-[#546C37] hover:text-[#941C2F] flex items-center gap-1"
+                  className="text-xs text-[#546C37] dark:text-[#CFE3A8] hover:text-[#941C2F] dark:hover:text-[#FF9FAE] flex items-center gap-1 cursor-pointer"
                   title="Copiar fórmula"
                 >
-                  {copiedId === f.id ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                  {copiedId === f.id ? <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                   <span className="text-[11px] font-mono">{copiedId === f.id ? 'Copiado' : 'Copiar LaTeX'}</span>
                 </button>
               </div>
 
-              <h3 className="font-bold text-base text-[#546C37] font-['Space_Grotesk']">
+              <h3 className="font-bold text-base text-[#546C37] dark:text-[#CFE3A8] font-['Space_Grotesk']">
                 {f.name}
               </h3>
-              <p className="text-xs text-[#546C37]/80 mt-1">
+              <p className="text-xs text-[#546C37]/80 dark:text-[#CFE3A8]/80 mt-1">
                 {f.description}
               </p>
 
               {/* Equation Box with KaTeX rendering */}
-              <div className="my-2 text-center">
+              <div className="my-2 text-center text-[#546C37] dark:text-[#CFE3A8]">
                 <ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]}>
                   {`$$${f.latex}$$`}
                 </ReactMarkdown>
@@ -127,11 +127,11 @@ export const FormulasView: React.FC<FormulasViewProps> = ({ onAskAboutFormula })
 
               {/* Variables breakdown */}
               <div className="space-y-1 text-xs">
-                <span className="font-semibold text-[#546C37] text-[11px]">Variables y Unidades SI:</span>
-                <div className="grid grid-cols-1 gap-1 text-[11px] text-[#546C37]/85 font-mono">
+                <span className="font-semibold text-[#546C37] dark:text-[#CFE3A8] text-[11px]">Variables y Unidades SI:</span>
+                <div className="grid grid-cols-1 gap-1 text-[11px] text-[#546C37]/85 dark:text-[#CFE3A8]/85 font-mono">
                   {f.variables.map((v, i) => (
-                    <div key={i} className="flex items-center justify-between bg-[#FFFBD9]/50 px-2 py-0.5 rounded">
-                      <span className="font-bold text-[#941C2F]">{v.symbol}</span>
+                    <div key={i} className="flex items-center justify-between bg-[#FFFBD9]/50 dark:bg-[#0F1A0F]/50 px-2 py-0.5 rounded">
+                      <span className="font-bold text-[#941C2F] dark:text-[#FF9FAE]">{v.symbol}</span>
                       <span>{v.name} ({v.unit})</span>
                     </div>
                   ))}
@@ -141,9 +141,9 @@ export const FormulasView: React.FC<FormulasViewProps> = ({ onAskAboutFormula })
 
             <button
               onClick={() => onAskAboutFormula(f.name, f.latex)}
-              className="mt-4 w-full py-2 bg-[#D6E3B1] hover:bg-[#ADCA88] text-[#546C37] rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-colors"
+              className="mt-4 w-full py-2 bg-[#D6E3B1] dark:bg-[#24402B] hover:bg-[#ADCA88] dark:hover:bg-[#3C5A40] text-[#546C37] dark:text-[#CFE3A8] rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
             >
-              <Sparkles className="w-3.5 h-3.5 text-[#941C2F]" />
+              <Sparkles className="w-3.5 h-3.5 text-[#941C2F] dark:text-[#FF9FAE]" />
               <span>Pedir a Newton que resuelva un ejercicio con esta fórmula</span>
             </button>
           </div>
@@ -151,21 +151,21 @@ export const FormulasView: React.FC<FormulasViewProps> = ({ onAskAboutFormula })
       </div>
 
       {/* Fundamental Constants Section */}
-      <div className="bg-white rounded-3xl p-5 border border-[#ADCA88]/50 shadow-xs space-y-3">
-        <h2 className="text-lg font-bold text-[#546C37] font-['Pixelify_Sans']">
+      <div className="bg-white dark:bg-[#16241A] rounded-3xl p-5 border border-[#ADCA88]/50 dark:border-[#3C5A40]/50 shadow-xs space-y-3">
+        <h2 className="text-lg font-bold text-[#546C37] dark:text-[#CFE3A8] font-['Pixelify_Sans']">
           Constantes Físicas Fundamentales
         </h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {PHYSICAL_CONSTANTS.map((c, idx) => (
-            <div key={idx} className="bg-[#FFFBD9]/70 rounded-2xl p-3 border border-[#ADCA88]/40 space-y-1">
+            <div key={idx} className="bg-[#FFFBD9]/70 dark:bg-[#0F1A0F]/70 rounded-2xl p-3 border border-[#ADCA88]/40 dark:border-[#3C5A40]/40 space-y-1">
               <div className="flex items-center justify-between">
-                <span className="font-bold text-xs text-[#546C37]">{c.name}</span>
-                <span className="font-mono font-bold text-sm text-[#941C2F]">{c.symbol}</span>
+                <span className="font-bold text-xs text-[#546C37] dark:text-[#CFE3A8]">{c.name}</span>
+                <span className="font-mono font-bold text-sm text-[#941C2F] dark:text-[#FF9FAE]">{c.symbol}</span>
               </div>
-              <div className="font-mono text-xs font-semibold text-[#546C37]">
+              <div className="font-mono text-xs font-semibold text-[#546C37] dark:text-[#CFE3A8]">
                 {c.value}
               </div>
-              <p className="text-[10px] text-[#546C37]/75">
+              <p className="text-[10px] text-[#546C37]/75 dark:text-[#CFE3A8]/75">
                 {c.description}
               </p>
             </div>

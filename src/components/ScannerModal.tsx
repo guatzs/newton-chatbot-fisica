@@ -146,26 +146,26 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({ isOpen, onClose, onS
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="relative w-full max-w-xl bg-[#FFFBD9] rounded-3xl p-5 border-2 border-[#546C37]/30 shadow-2xl overflow-hidden max-h-[92vh] flex flex-col">
+      <div className="relative w-full max-w-xl bg-[#FFFBD9] dark:bg-[#0F1A0F] rounded-3xl p-5 border-2 border-[#546C37]/30 dark:border-[#3C5A40]/50 shadow-2xl overflow-hidden max-h-[92vh] flex flex-col">
         {/* Top Header */}
-        <div className="flex items-start justify-between pb-3 border-b border-[#ADCA88]/40">
+        <div className="flex items-start justify-between pb-3 border-b border-[#ADCA88]/40 dark:border-[#3C5A40]/40">
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-base text-[#941C2F]">🔬</span>
-              <span className="text-[11px] font-semibold text-[#546C37] tracking-wider uppercase font-mono">
+              <span className="text-base text-[#941C2F] dark:text-[#FF9FAE]">🔬</span>
+              <span className="text-[11px] font-semibold text-[#546C37] dark:text-[#CFE3A8] tracking-wider uppercase font-mono">
                 Newton Lab: Inspector Óptico
               </span>
             </div>
-            <h2 className="text-xl font-bold text-[#546C37] font-['Pixelify_Sans'] mt-0.5">
+            <h2 className="text-xl font-bold text-[#546C37] dark:text-[#CFE3A8] font-['Pixelify_Sans'] mt-0.5">
               Escanear Ejercicio o Apunte
             </h2>
-            <p className="text-xs text-[#546C37]/80 font-['Space_Grotesk'] mt-0.5">
+            <p className="text-xs text-[#546C37]/80 dark:text-[#CFE3A8]/80 font-['Space_Grotesk'] mt-0.5">
               Toma una foto con tu cámara o sube una imagen de tu libreta, pizarra o examen de Física Aplicada.
             </p>
           </div>
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-full bg-[#D6E3B1]/60 hover:bg-[#D6E3B1] flex items-center justify-center text-[#546C37] transition-colors cursor-pointer"
+            className="w-8 h-8 rounded-full bg-[#D6E3B1]/60 dark:bg-[#24402B]/60 hover:bg-[#D6E3B1] dark:hover:bg-[#24402B] flex items-center justify-center text-[#546C37] dark:text-[#CFE3A8] transition-colors cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
@@ -175,14 +175,14 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({ isOpen, onClose, onS
         <div className="overflow-y-auto py-3 space-y-3 flex-1 pr-1">
           {/* Error notice if compression or format failed */}
           {errorMessage && (
-            <div className="bg-[#FFF2EE] border border-[#FA8989] text-[#941C2F] p-3 rounded-2xl text-xs flex items-center gap-2">
+            <div className="bg-[#FFF2EE] dark:bg-[#3A1820] border border-[#FA8989] dark:border-[#8A3A4A] text-[#941C2F] dark:text-[#FF9FAE] p-3 rounded-2xl text-xs flex items-center gap-2">
               <AlertCircle className="w-4 h-4 shrink-0" />
               <span>{errorMessage}</span>
             </div>
           )}
 
-          {/* Camera Viewport / Preview Box */}
-          <div className="relative aspect-[4/3] bg-[#0E1A0F] rounded-2xl overflow-hidden border-2 border-[#546C37]/80 shadow-inner flex flex-col justify-between p-3 select-none">
+          {/* Camera Viewport / Preview Box (kept #0E1A0F dark viewport) */}
+          <div className="relative aspect-[4/3] bg-[#0E1A0F] rounded-2xl overflow-hidden border-2 border-[#546C37]/80 dark:border-[#3C5A40] shadow-inner flex flex-col justify-between p-3 select-none">
             {/* Top Bar inside Viewport */}
             <div className="flex items-center justify-between text-[#ADCA88] text-[11px] font-mono z-10">
               <span className="bg-black/60 px-2.5 py-1 rounded-full backdrop-blur-sm text-[10px]">
@@ -248,7 +248,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({ isOpen, onClose, onS
 
           {/* Mode Selector Tabs */}
           <div>
-            <span className="text-[#546C37] font-semibold text-[11px] block mb-1">
+            <span className="text-[#546C37] dark:text-[#CFE3A8] font-semibold text-[11px] block mb-1">
               Tipo de contenido a analizar:
             </span>
             <div className="grid grid-cols-3 gap-2 text-xs">
@@ -257,8 +257,8 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({ isOpen, onClose, onS
                 onClick={() => setActiveMode('diagram')}
                 className={`py-2 px-2.5 rounded-xl font-medium flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                   activeMode === 'diagram'
-                    ? 'bg-[#546C37] text-white shadow-xs'
-                    : 'bg-[#D6E3B1]/70 text-[#546C37] hover:bg-[#D6E3B1]'
+                    ? 'bg-[#546C37] dark:bg-[#6E8F47] text-white shadow-xs'
+                    : 'bg-[#D6E3B1]/70 dark:bg-[#24402B]/70 text-[#546C37] dark:text-[#CFE3A8] hover:bg-[#D6E3B1] dark:hover:bg-[#24402B]'
                 }`}
               >
                 <Cpu className="w-3.5 h-3.5" />
@@ -269,8 +269,8 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({ isOpen, onClose, onS
                 onClick={() => setActiveMode('formula')}
                 className={`py-2 px-2.5 rounded-xl font-medium flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                   activeMode === 'formula'
-                    ? 'bg-[#546C37] text-white shadow-xs'
-                    : 'bg-[#D6E3B1]/70 text-[#546C37] hover:bg-[#D6E3B1]'
+                    ? 'bg-[#546C37] dark:bg-[#6E8F47] text-white shadow-xs'
+                    : 'bg-[#D6E3B1]/70 dark:bg-[#24402B]/70 text-[#546C37] dark:text-[#CFE3A8] hover:bg-[#D6E3B1] dark:hover:bg-[#24402B]'
                 }`}
               >
                 <FileText className="w-3.5 h-3.5" />
@@ -281,8 +281,8 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({ isOpen, onClose, onS
                 onClick={() => setActiveMode('page')}
                 className={`py-2 px-2.5 rounded-xl font-medium flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                   activeMode === 'page'
-                    ? 'bg-[#546C37] text-white shadow-xs'
-                    : 'bg-[#D6E3B1]/70 text-[#546C37] hover:bg-[#D6E3B1]'
+                    ? 'bg-[#546C37] dark:bg-[#6E8F47] text-white shadow-xs'
+                    : 'bg-[#D6E3B1]/70 dark:bg-[#24402B]/70 text-[#546C37] dark:text-[#CFE3A8] hover:bg-[#D6E3B1] dark:hover:bg-[#24402B]'
                 }`}
               >
                 <Camera className="w-3.5 h-3.5" />
@@ -292,8 +292,8 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({ isOpen, onClose, onS
           </div>
 
           {/* Optional Observation / Custom Question Input */}
-          <div className="bg-[#FFFBD9] p-3 rounded-2xl border border-[#ADCA88] shadow-xs">
-            <label className="block text-[11px] font-semibold text-[#546C37] mb-1 font-mono">
+          <div className="bg-[#FFFBD9] dark:bg-[#0F1A0F] p-3 rounded-2xl border border-[#ADCA88] dark:border-[#3C5A40] shadow-xs">
+            <label className="block text-[11px] font-semibold text-[#546C37] dark:text-[#CFE3A8] mb-1 font-mono">
               PREGUNTA U OBSERVACIÓN ADICIONAL (OPCIONAL):
             </label>
             <input
@@ -301,13 +301,13 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({ isOpen, onClose, onS
               value={userNote}
               onChange={(e) => setUserNote(e.target.value)}
               placeholder="Ej: Hallar la corriente en R2 o calcular el campo en la superficie..."
-              className="w-full bg-white px-3 py-2 rounded-xl border border-[#ADCA88]/50 text-xs font-['Space_Grotesk'] text-[#546C37] placeholder:text-[#546C37]/40 focus:outline-none focus:ring-1 focus:ring-[#546C37]"
+              className="w-full bg-white dark:bg-[#16241A] px-3 py-2 rounded-xl border border-[#ADCA88]/50 dark:border-[#3C5A40]/50 text-xs font-['Space_Grotesk'] text-[#546C37] dark:text-[#CFE3A8] placeholder:text-[#546C37]/40 dark:placeholder:text-[#CFE3A8]/40 focus:outline-none focus:ring-1 focus:ring-[#546C37] dark:focus:ring-[#6E8F47]"
             />
           </div>
         </div>
 
         {/* Footer Actions */}
-        <div className="pt-3 border-t border-[#ADCA88]/40 flex flex-wrap items-center justify-between gap-2">
+        <div className="pt-3 border-t border-[#ADCA88]/40 dark:border-[#3C5A40]/40 flex flex-wrap items-center justify-between gap-2">
           {/* Hidden Inputs */}
           {/* 1. Camera input with capture="environment" for mobile back camera */}
           <input
@@ -332,9 +332,9 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({ isOpen, onClose, onS
             <button
               type="button"
               onClick={() => cameraInputRef.current?.click()}
-              className="py-2.5 px-3 bg-[#FA8989]/20 hover:bg-[#FA8989]/30 text-[#941C2F] border border-[#FA8989] rounded-2xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-xs active:scale-95 cursor-pointer"
+              className="py-2.5 px-3 bg-[#FA8989]/20 hover:bg-[#FA8989]/30 text-[#941C2F] dark:text-[#FF9FAE] border border-[#FA8989] dark:border-[#8A3A4A] rounded-2xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-xs active:scale-95 cursor-pointer"
             >
-              <Camera className="w-4 h-4 text-[#941C2F]" />
+              <Camera className="w-4 h-4 text-[#941C2F] dark:text-[#FF9FAE]" />
               <span>Tomar foto</span>
             </button>
 
@@ -342,9 +342,9 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({ isOpen, onClose, onS
             <button
               type="button"
               onClick={() => uploadInputRef.current?.click()}
-              className="py-2.5 px-3 bg-white hover:bg-[#FFFBD9] text-[#546C37] border border-[#ADCA88] rounded-2xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-xs active:scale-95 cursor-pointer"
+              className="py-2.5 px-3 bg-white dark:bg-[#16241A] hover:bg-[#FFFBD9] dark:hover:bg-[#0F1A0F] text-[#546C37] dark:text-[#CFE3A8] border border-[#ADCA88] dark:border-[#3C5A40] rounded-2xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-xs active:scale-95 cursor-pointer"
             >
-              <Upload className="w-4 h-4 text-[#546C37]" />
+              <Upload className="w-4 h-4 text-[#546C37] dark:text-[#CFE3A8]" />
               <span>Subir imagen</span>
             </button>
           </div>
@@ -356,8 +356,8 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({ isOpen, onClose, onS
             onClick={handleTriggerAnalysis}
             className={`py-2.5 px-4 rounded-2xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-md active:scale-95 ${
               !customImage || isCompressing
-                ? 'bg-[#941C2F]/40 text-white/70 cursor-not-allowed shadow-none'
-                : 'bg-[#941C2F] hover:bg-[#941C2F]/90 text-white cursor-pointer'
+                ? 'bg-[#941C2F]/40 dark:bg-[#C0334A]/40 text-white/70 cursor-not-allowed shadow-none'
+                : 'bg-[#941C2F] dark:bg-[#C0334A] hover:bg-[#941C2F]/90 dark:hover:bg-[#C0334A]/90 text-white cursor-pointer'
             }`}
             title={!customImage ? 'Toma o sube una foto para activar el análisis' : 'Analizar con Newton AI'}
           >

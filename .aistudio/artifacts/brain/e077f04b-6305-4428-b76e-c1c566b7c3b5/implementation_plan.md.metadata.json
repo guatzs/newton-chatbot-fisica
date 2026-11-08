@@ -1,0 +1,6 @@
+{
+  "summary":  "Implementación completada: Streaming SSE en /api/chat con generateContentStream, respaldo automático entre gemini-3.8-flash (15s) y gemini-3.1-flash-lite (20s) ante errores 429/500/503/404 o timeout, cancelación con AbortController al desconectar el cliente, supresión en tiempo real de tokens [DIAGRAMA] y [SUGERENCIAS], actualizaciones con requestAnimationFrame y scroll 'auto' durante streaming.",
+  "updatedAt":  "2026-11-07T23:34:44.726756327Z",
+  "requestFeedback":  true,
+  "userFacing":  true
+}

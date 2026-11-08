@@ -1,5 +1,7 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 /* KaTeX Formula Card Display Styling */
 .katex-display {
   background-color: #FFFBD9 !important;
@@ -23,7 +25,23 @@
   color: inherit;
 }
 
-/* Newton Markdown Typography */
+/* KaTeX Dark Mode Display Styling */
+.dark .katex-display {
+  background-color: #0F1A0F !important;
+  color: #FF9FAE !important;
+  border: 1.5px solid #3C5A40 !important;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.4) !important;
+}
+
+.dark .katex-display .katex {
+  color: #FF9FAE !important;
+}
+
+.dark .katex {
+  color: inherit;
+}
+
+/* Newton Markdown Typography - Light */
 .newton-markdown p {
   margin-top: 0.35rem;
   margin-bottom: 0.35rem;
@@ -73,4 +91,22 @@
   font-family: monospace;
   font-size: 0.85em;
   color: #941C2F;
+}
+
+/* Newton Markdown Typography - Dark Mode */
+.dark .newton-markdown h1,
+.dark .newton-markdown h2,
+.dark .newton-markdown h3,
+.dark .newton-markdown h4 {
+  color: #FF9FAE;
+}
+
+.dark .newton-markdown strong {
+  color: #FBE9E4;
+}
+
+.dark .newton-markdown code {
+  background-color: rgba(22, 36, 26, 0.75);
+  border: 1px solid #3C5A40;
+  color: #FF9FAE;
 }

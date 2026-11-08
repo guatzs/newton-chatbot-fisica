@@ -53,11 +53,11 @@ REGLAS DE RIGOR Y FORMATO DE RESPUESTA:
 3. Formato estructurado y fórmulas matemáticas en LaTeX:
    - Redacta tus explicaciones usando Markdown estructurado (títulos con ##, listas y énfasis en negrita).
    - Escribe SIEMPRE las expresiones y fórmulas en notación LaTeX estándar:
-     * Usa delimitadores simples $...$ para matemáticas en línea (ejemplos: $E = 0$, $\tau = RC$, $V_\gamma \approx 0.7\text{ V}$, $q_1, q_2$).
+     * Usa delimitadores simples $...$ para matemáticas en línea (ejemplos: $E = 0$, $\tau = RC$, $V_\\gamma \\approx 0.7\\text{ V}$, $q_1, q_2$).
      * Usa delimitadores dobles $$...$$ en líneas separadas para ecuaciones destacadas, leyes fundamentales, fórmulas principales y resultados finales (ejemplo:
-       $$\oint \vec{E} \cdot d\vec{A} = \frac{Q_{enc}}{\varepsilon_0}$$
-       $$q(t) = C\mathcal{E}(1 - e^{-t/RC})$$
-       $$I_D = I_s \left(e^{\frac{V_D}{\eta V_T}} - 1\right)$$
+       $$\\oint \\vec{E} \\cdot d\\vec{A} = \\frac{Q_{enc}}{\\varepsilon_0}$$
+       $$q(t) = C\\mathcal{E}(1 - e^{-t/RC})$$
+       $$I_D = I_s \\left(e^{\\frac{V_D}{\\eta V_T}} - 1\\right)$$
      )
    - Si la consulta involucra la ley de Gauss en un conductor, un circuito RC transitorio o la curva I-V de un diodo, menciona que pueden visualizarlo con el simulador interactivo de Newton.
 4. Generación de diagramas e ilustraciones con Imagen:
@@ -108,23 +108,94 @@ function getAI(): GoogleGenAI {
   return aiInstance;
 }
 
-export async function askNewtonAI(params: {
+/**
+ * Extracts HTTP status code from an error thrown by the @google/genai SDK.
+ * The SDK attaches the status code directly to `err.status` on ApiError instances.
+ */
+export function extractHttpStatus(err: any): number | null {
+  if (!err) return null;
+  if (typeof err.status === 'number') return err.status;
+  if (typeof err.statusCode === 'number') return err.statusCode;
+  if (err.error && typeof err.error.code === 'number') return err.error.code;
+  if (err.response && typeof err.response.status === 'number') return err.response.status;
+  if (typeof err.message === 'string') {
+    const match = err.message.match(/"code":\s*(\d+)/);
+    if (match) return parseInt(match[1], 10);
+    const httpMatch = err.message.match(/\b(404|429|500|502|503|504)\b/);
+    if (httpMatch) return parseInt(httpMatch[1], 10);
+  }
+  return null;
+}
+
+/**
+ * Checks if the error qualifies for an automatic failover to the next fallback model.
+ * Per requirement: 429, 500, 503, 404 or Timeout.
+ */
+export function isRetryableModelError(err: any): boolean {
+  if (err?.name === 'TimeoutError' || err?.message?.includes('timeout') || err?.message?.includes('Timeout')) {
+    return true;
+  }
+  const status = extractHttpStatus(err);
+  if (status && [404, 429, 500, 502, 503, 504].includes(status)) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Filters out [DIAGRAMA] and [SUGERENCIAS] tags during live streaming to prevent control tokens from leaking.
+ */
+function getSafeVisibleText(accumulated: string): string {
+  const dIndex = accumulated.indexOf('[DIAGRAMA]');
+  const sIndex = accumulated.indexOf('[SUGERENCIAS]');
+  let cutoff = accumulated.length;
+  if (dIndex !== -1 && dIndex < cutoff) cutoff = dIndex;
+  if (sIndex !== -1 && sIndex < cutoff) cutoff = sIndex;
+  
+  let visible = accumulated.slice(0, cutoff);
+  // Withhold partial tag prefix like "[", "[D", "[DIAG", "[S", "[SUG"
+  const candidateTags = ['[DIAGRAMA]:', '[DIAGRAMA]', '[SUGERENCIAS]:', '[SUGERENCIAS]'];
+  for (const tag of candidateTags) {
+    for (let len = tag.length; len >= 1; len--) {
+      const prefix = tag.slice(0, len);
+      if (visible.endsWith(prefix)) {
+        visible = visible.slice(0, -prefix.length);
+        break;
+      }
+    }
+  }
+  return visible;
+}
+
+export interface StreamResult {
+  text: string;
+  diagramPrompt?: string;
+  quickChips: string[];
+  simulationType?: 'conductor_gauss' | 'circuito_rc' | 'diodo_iv';
+}
+
+/**
+ * Streams chat responses from Gemini models with per-model timeouts, automatic failover
+ * before the first chunk, live filtering of control tokens, and AbortSignal support.
+ */
+export async function streamNewtonAI(params: {
   prompt: string;
   history?: { role: 'user' | 'model'; parts: { text: string }[] }[];
   imageBase64?: string;
   imageMimeType?: string;
-}): Promise<{
-  text: string;
-  diagramPrompt?: string;
-  formula?: string;
-  quickChips: string[];
-  simulationType?: 'conductor_gauss' | 'circuito_rc' | 'diodo_iv';
-}> {
+  abortSignal?: AbortSignal;
+  onChunk: (chunkText: string) => void;
+}): Promise<StreamResult> {
+  console.time('[Newton AI Stream] Total Execution');
   const ai = getAI();
-  const modelsToTry = ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite'];
+
+  // Model configurations: primary (15s timeout) and fallback (20s timeout)
+  const modelConfigs = [
+    { model: 'gemini-3.8-flash', timeoutMs: 15000, waitBeforeRetryMs: 500 },
+    { model: 'gemini-3.1-flash-lite', timeoutMs: 20000, waitBeforeRetryMs: 1000 },
+  ];
 
   let contents: any[] = [];
-  
   if (params.history && params.history.length > 0) {
     contents = [...params.history];
   }
@@ -141,36 +212,105 @@ export async function askNewtonAI(params: {
   currentParts.push({ text: params.prompt });
   contents.push({ role: 'user', parts: currentParts });
 
-  let rawResponseText = '';
+  let rawAccumulated = '';
+  let lastEmittedLength = 0;
+  let hasEmittedChunk = false;
   let lastError: any = null;
 
-  for (const model of modelsToTry) {
+  for (let i = 0; i < modelConfigs.length; i++) {
+    const { model, timeoutMs, waitBeforeRetryMs } = modelConfigs[i];
+    if (params.abortSignal?.aborted) {
+      throw new Error('Petición cancelada por el cliente.');
+    }
+
+    const modelTimer = `[Newton AI Stream] ${model}`;
+    console.time(modelTimer);
+
     try {
-      const response = await ai.models.generateContent({
+      // Setup timeout promise
+      let timeoutId: NodeJS.Timeout | null = null;
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(() => {
+          const tErr = new Error(`Timeout de ${timeoutMs}ms excedido en modelo ${model}`);
+          tErr.name = 'TimeoutError';
+          reject(tErr);
+        }, timeoutMs);
+      });
+
+      // Call generateContentStream
+      const streamPromise = ai.models.generateContentStream({
         model,
         contents,
         config: {
           systemInstruction: NEWTON_SYSTEM_INSTRUCTION,
-          temperature: 0.2,
         },
       });
 
-      rawResponseText = response.text || '';
-      if (rawResponseText) break;
+      const responseStream = await Promise.race([streamPromise, timeoutPromise]);
+      if (timeoutId) clearTimeout(timeoutId);
+
+      // Iterate through chunks
+      for await (const chunk of responseStream) {
+        if (params.abortSignal?.aborted) {
+          console.warn(`[Newton AI Stream] Client disconnected while streaming from ${model}. Aborting.`);
+          throw new Error('Petición cancelada por el cliente.');
+        }
+
+        const chunkText = chunk.text || '';
+        if (chunkText) {
+          rawAccumulated += chunkText;
+
+          // Safe chunk streaming (hides [DIAGRAMA] and [SUGERENCIAS] in real-time)
+          const safeVisible = getSafeVisibleText(rawAccumulated);
+          if (safeVisible.length > lastEmittedLength) {
+            const diff = safeVisible.slice(lastEmittedLength);
+            lastEmittedLength = safeVisible.length;
+            params.onChunk(diff);
+            hasEmittedChunk = true;
+          }
+        }
+      }
+
+      console.timeEnd(modelTimer);
+      if (rawAccumulated.trim()) {
+        break; // Successfully streamed entire response
+      }
     } catch (err: any) {
+      console.timeEnd(modelTimer);
       lastError = err;
-      console.warn(`Model ${model} failed, trying next fallback:`, err?.message || err);
-      // Brief pause before trying fallback
-      await new Promise(r => setTimeout(r, 600));
+
+      // If client explicitly aborted, stop immediately
+      if (params.abortSignal?.aborted || err?.message?.includes('cancelada por el cliente')) {
+        throw new Error('Petición cancelada por el cliente.');
+      }
+
+      // Model fallback ONLY allowed before the first chunk is emitted
+      const isRetryable = isRetryableModelError(err);
+      const httpCode = extractHttpStatus(err);
+      console.warn(
+        `[Newton AI Stream] Model ${model} failed (HTTP ${httpCode || 'N/A'}, retryable=${isRetryable}, hasEmittedChunk=${hasEmittedChunk}):`,
+        err?.message || err
+      );
+
+      if (!hasEmittedChunk && isRetryable && i < modelConfigs.length - 1) {
+        console.info(`[Newton AI Stream] Waiting ${waitBeforeRetryMs}ms before failing over to next model...`);
+        await new Promise((r) => setTimeout(r, waitBeforeRetryMs));
+        continue;
+      }
+
+      // If already started streaming or error is not retryable, throw
+      throw err;
     }
   }
 
-  if (!rawResponseText) {
+  console.timeEnd('[Newton AI Stream] Total Execution');
+
+  if (!rawAccumulated) {
     throw lastError || new Error('No se pudo obtener respuesta de los modelos de Newton AI.');
   }
 
   // Parse diagram prompt from [DIAGRAMA]: description in english
-  let cleanText = rawResponseText;
+  let cleanText = rawAccumulated;
   let diagramPrompt: string | undefined;
   const diagramMatch = cleanText.match(/\[DIAGRAMA\]:\s*([^\n\r]+)/i);
   if (diagramMatch) {
@@ -183,7 +323,7 @@ export async function askNewtonAI(params: {
   const chipsMatch = cleanText.match(/\[SUGERENCIAS\]:\s*([^\n\r]+)/i);
   if (chipsMatch) {
     const rawChips = chipsMatch[1];
-    quickChips = rawChips.split('|').map(s => s.trim()).filter(s => s.length > 0 && s.length < 50);
+    quickChips = rawChips.split('|').map((s) => s.trim()).filter((s) => s.length > 0 && s.length < 50);
     cleanText = cleanText.replace(/\[SUGERENCIAS\]:\s*[^\n\r]+/i, '').trim();
   }
 
@@ -219,18 +359,29 @@ export async function askNewtonAI(params: {
   };
 }
 
+export async function askNewtonAI(params: {
+  prompt: string;
+  history?: { role: 'user' | 'model'; parts: { text: string }[] }[];
+  imageBase64?: string;
+  imageMimeType?: string;
+}): Promise<StreamResult> {
+  let accumulated = '';
+  return streamNewtonAI({
+    ...params,
+    onChunk: (chunk) => {
+      accumulated += chunk;
+    },
+  });
+}
+
 export async function askNewtonVision(params: {
   prompt?: string;
   imageBase64: string;
   imageMimeType?: string;
-}): Promise<{
-  text: string;
-  diagramPrompt?: string;
-  quickChips: string[];
-  simulationType?: 'conductor_gauss' | 'circuito_rc' | 'diodo_iv';
-}> {
+}): Promise<StreamResult> {
+  console.time('[Newton Vision] Total Execution');
   const ai = getAI();
-  const modelsToTry = ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite'];
+  const modelsToTry = ['gemini-3.8-flash', 'gemini-3.1-flash-lite'];
 
   const cleanBase64 = params.imageBase64.replace(/^data:[^;]+;base64,/, '');
   const mimeType = params.imageMimeType || 'image/jpeg';
@@ -258,24 +409,29 @@ export async function askNewtonVision(params: {
   let lastError: any = null;
 
   for (const model of modelsToTry) {
+    const modelTimer = `[Newton Vision] generateContent (${model})`;
+    console.time(modelTimer);
     try {
       const response = await ai.models.generateContent({
         model,
         contents,
         config: {
           systemInstruction: NEWTON_VISION_INSTRUCTION,
-          temperature: 0.2,
         },
       });
 
+      console.timeEnd(modelTimer);
       rawResponseText = response.text || '';
       if (rawResponseText) break;
     } catch (err: any) {
+      console.timeEnd(modelTimer);
       lastError = err;
-      console.warn(`Vision model ${model} failed, trying next fallback:`, err?.message || err);
-      await new Promise((r) => setTimeout(r, 600));
+      console.warn(`[Newton Vision] Model ${model} failed, trying next fallback:`, err?.message || err);
+      await new Promise((r) => setTimeout(r, 500));
     }
   }
+
+  console.timeEnd('[Newton Vision] Total Execution');
 
   if (!rawResponseText) {
     throw lastError || new Error('No se pudo procesar la imagen con los modelos de visión de Newton AI.');
@@ -333,12 +489,12 @@ export async function transcribeNewtonAudio(params: {
   audioBase64: string;
   mimeType?: string;
 }): Promise<{ text: string }> {
+  console.time('[Newton Audio] Total Transcription');
   const ai = getAI();
   const cleanBase64 = params.audioBase64.replace(/^data:[^;]+;base64,/, '');
   const mimeType = params.mimeType || 'audio/webm';
 
-  // For audio transcription, try gemini-3.5-transcribe first, then flash fallback
-  const modelsToTry = ['gemini-3.5-transcribe', 'gemini-3.8-flash', 'gemini-flash-latest'];
+  const modelsToTry = ['gemini-3.5-transcribe', 'gemini-3.8-flash', 'gemini-3.1-flash-lite'];
 
   const contents = [
     {
@@ -361,20 +517,26 @@ export async function transcribeNewtonAudio(params: {
   let lastError: any = null;
 
   for (const model of modelsToTry) {
+    const modelTimer = `[Newton Audio] transcribe (${model})`;
+    console.time(modelTimer);
     try {
       const response = await ai.models.generateContent({
         model,
         contents,
       });
 
+      console.timeEnd(modelTimer);
       transcribedText = response.text ? response.text.trim() : '';
       if (transcribedText) break;
     } catch (err: any) {
+      console.timeEnd(modelTimer);
       lastError = err;
-      console.warn(`Audio transcribe model ${model} failed, trying next:`, err?.message || err);
-      await new Promise((r) => setTimeout(r, 600));
+      console.warn(`[Newton Audio] Model ${model} failed, trying next:`, err?.message || err);
+      await new Promise((r) => setTimeout(r, 500));
     }
   }
+
+  console.timeEnd('[Newton Audio] Total Transcription');
 
   if (!transcribedText) {
     throw lastError || new Error('No se pudo transcribir el audio enviado.');
@@ -386,11 +548,15 @@ export async function transcribeNewtonAudio(params: {
 export async function generateNewtonDiagram(params: {
   prompt: string;
 }): Promise<{ imageUrl: string }> {
+  console.time('[Newton Diagram] Total Generation');
   const ai = getAI();
   const cleanPrompt = params.prompt.trim();
 
   const enhancedPrompt = `Scientific physics educational diagram: ${cleanPrompt}. High quality educational textbook schematic, clean white background, high contrast, clear technical lines, accurate electrical and physical symbols, clearly labeled components, arrow directions and polarities marked (+ and -).`;
 
+  // First try official Imagen 3 model 'imagen-3.0-generate-002' via generateImages
+  const imagenTimer = '[Newton Diagram] generateImages (imagen-3.0-generate-002)';
+  console.time(imagenTimer);
   try {
     const response = await ai.models.generateImages({
       model: 'imagen-3.0-generate-002',
@@ -401,17 +567,51 @@ export async function generateNewtonDiagram(params: {
         aspectRatio: '4:3',
       },
     });
+    console.timeEnd(imagenTimer);
 
     const imgBytes = response.generatedImages?.[0]?.image?.imageBytes;
-    if (!imgBytes) {
-      throw new Error('El modelo Imagen no devolvió datos de imagen.');
+    if (imgBytes) {
+      console.timeEnd('[Newton Diagram] Total Generation');
+      return {
+        imageUrl: `data:image/jpeg;base64,${imgBytes}`,
+      };
     }
-
-    return {
-      imageUrl: `data:image/jpeg;base64,${imgBytes}`,
-    };
   } catch (err: any) {
-    console.error('Error generating diagram with Imagen:', err);
-    throw new Error(err?.message || 'No se pudo generar el diagrama técnico con Imagen.');
+    console.timeEnd(imagenTimer);
+    console.warn('[Newton Diagram] Imagen generateImages failed, trying gemini-3.1-flash-lite-image fallback:', err?.message || err);
   }
+
+  // Fallback to official Gemini Image model 'gemini-3.1-flash-lite-image'
+  const fallbackTimer = '[Newton Diagram] generateContent (gemini-3.1-flash-lite-image)';
+  console.time(fallbackTimer);
+  try {
+    const fallbackResponse = await ai.models.generateContent({
+      model: 'gemini-3.1-flash-lite-image',
+      contents: {
+        parts: [{ text: enhancedPrompt }],
+      },
+      config: {
+        imageConfig: {
+          aspectRatio: '4:3',
+        },
+      },
+    });
+    console.timeEnd(fallbackTimer);
+
+    for (const part of fallbackResponse.candidates?.[0]?.content?.parts ?? []) {
+      if (part.inlineData?.data) {
+        const mime = part.inlineData.mimeType || 'image/png';
+        console.timeEnd('[Newton Diagram] Total Generation');
+        return {
+          imageUrl: `data:${mime};base64,${part.inlineData.data}`,
+        };
+      }
+    }
+  } catch (fallbackErr: any) {
+    console.timeEnd(fallbackTimer);
+    console.error('[Newton Diagram] Both Imagen and Gemini image fallback failed:', fallbackErr);
+  }
+
+  console.timeEnd('[Newton Diagram] Total Generation');
+  throw new Error('No se pudo generar el diagrama técnico educativo.');
 }

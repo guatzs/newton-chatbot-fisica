@@ -40,6 +40,7 @@ interface ChatViewProps {
   onSelectSession?: (sessionId: string) => void;
   onDeleteSession?: (sessionId: string) => Promise<void>;
   onRetryDiagram?: (messageId: string, diagramPrompt: string) => Promise<void>;
+  hasGuestBanner?: boolean;
 }
 
 export const ChatView: React.FC<ChatViewProps> = ({
@@ -56,6 +57,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
   onSelectSession,
   onDeleteSession,
   onRetryDiagram,
+  hasGuestBanner = false,
 }) => {
   const [inputText, setInputText] = useState('');
   const [speakingMessageId, setSpeakingMessageId] = useState<string | null>(null);
@@ -211,7 +213,11 @@ export const ChatView: React.FC<ChatViewProps> = ({
   );
 
   return (
-    <div className="flex-1 flex flex-col h-[calc(100dvh-65px-64px)] md:h-[calc(100dvh-65px)] max-w-7xl mx-auto w-full px-2 sm:px-4 py-2 sm:py-3 overflow-hidden">
+    <div className={`flex-1 flex flex-col ${
+      hasGuestBanner 
+        ? 'h-[calc(100dvh-65px-64px-32px)] md:h-[calc(100dvh-65px-32px)]' 
+        : 'h-[calc(100dvh-65px-64px)] md:h-[calc(100dvh-65px)]'
+    } max-w-7xl mx-auto w-full px-2 sm:px-4 py-2 sm:py-3 overflow-hidden`}>
       {/* Top Session Sub-Header Card (matching ChatActivoMovil.png & DesktopIDE.png) */}
       <div className="bg-[#FFFBD9]/95 dark:bg-[#0F1A0F]/95 backdrop-blur-md rounded-2xl p-3 border border-[#ADCA88]/50 dark:border-[#3C5A40]/50 shadow-xs flex items-center justify-between gap-3 mb-3 shrink-0">
         <div className="flex items-center gap-2.5 min-w-0">

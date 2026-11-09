@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import type { User } from 'firebase/auth';
 import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
 import { HomeView } from './components/HomeView';
@@ -7,19 +8,34 @@ import { SimulatorsView } from './components/SimulatorsView';
 import { FormulasView } from './components/FormulasView';
 import { ScannerModal } from './components/ScannerModal';
 import { VoiceModal } from './components/VoiceModal';
+import { LoginScreen } from './components/LoginScreen';
+import { ConfirmGuestSignInModal } from './components/ConfirmGuestSignInModal';
 import { ChatSession, ChatMessage, CourseModuleId } from './types';
 import { 
   fetchAllSessions, 
   saveSessionToStorage, 
   fetchMessagesForSession, 
   saveMessageToStorage, 
-  deleteSessionFromStorage 
+  deleteSessionFromStorage,
+  signInWithGoogle,
+  signOutUser,
+  subscribeToAuth,
+  checkRedirectResult
 } from './firebase';
 import { Home, MessageSquare, Activity, BookOpen } from 'lucide-react';
 import { useTheme } from './hooks/useTheme';
 
+type AuthStatus = 'loading' | 'signedOut' | 'guest' | 'google';
+
 export default function App() {
   const { toggleTheme, isDark } = useTheme();
+  const [authStatus, setAuthStatus] = useState<AuthStatus>('loading');
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [isSigningIn, setIsSigningIn] = useState<boolean>(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [isConfirmSignInOpen, setIsConfirmSignInOpen] = useState<boolean>(false);
+  const [guestLoginError, setGuestLoginError] = useState<string | null>(null);
+
   const [activeTab, setActiveTab] = useState<'home' | 'chat' | 'simulators' | 'formulas'>('home');
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string>('');
@@ -29,28 +45,139 @@ export default function App() {
   const [isVoiceOpen, setIsVoiceOpen] = useState<boolean>(false);
   const [selectedSimulator, setSelectedSimulator] = useState<string>('conductor_gauss');
 
-  // Load user sessions on mount from Firestore / Local cache
+  // Firebase auth state subscription & redirect check
   useEffect(() => {
+    let isMounted = true;
+
+    checkRedirectResult().then((user) => {
+      if (user && isMounted) {
+        setCurrentUser(user);
+        setAuthStatus('google');
+      }
+    }).catch(() => {});
+
+    const unsubscribe = subscribeToAuth((user) => {
+      if (!isMounted) return;
+      if (user) {
+        setCurrentUser(user);
+        setAuthStatus('google');
+        setAuthError(null);
+      } else {
+        setCurrentUser(null);
+        setAuthStatus((prev) => (prev === 'guest' ? 'guest' : 'signedOut'));
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
+  }, []);
+
+  // Load user sessions when authenticated via Google
+  useEffect(() => {
+    if (authStatus !== 'google') return;
+    let isMounted = true;
+
     async function loadInitial() {
       try {
         const storedSessions = await fetchAllSessions();
+        if (!isMounted) return;
         if (storedSessions.length > 0) {
           setSessions(storedSessions);
           const latest = storedSessions[0];
           setCurrentSessionId(latest.id);
           const msgs = await fetchMessagesForSession(latest.id);
-          setMessages(msgs);
+          if (isMounted) setMessages(msgs);
         } else {
           setSessions([]);
           setCurrentSessionId('');
           setMessages([]);
         }
       } catch (err) {
-        console.warn('Error loading initial user sessions (using local state fallback):', err);
+        console.warn('Error loading initial user sessions:', err);
       }
     }
+
     loadInitial();
-  }, []);
+    return () => {
+      isMounted = false;
+    };
+  }, [authStatus]);
+
+  const handleGoogleLogin = async () => {
+    setIsSigningIn(true);
+    setAuthError(null);
+    try {
+      const res = await signInWithGoogle();
+      if (res.success && res.user) {
+        // onAuthStateChanged updates authStatus to 'google'
+      } else if (res.cancelled) {
+        // Closed popup: reset button without error
+      } else if (res.errorMessage) {
+        setAuthError(res.errorMessage);
+      }
+    } catch {
+      setAuthError('No pudimos conectar con Google. Revisa tu conexión e inténtalo de nuevo.');
+    } finally {
+      setIsSigningIn(false);
+    }
+  };
+
+  const handleGuestLogin = () => {
+    setIsSigningIn(true);
+    setTimeout(() => {
+      setSessions([]);
+      setMessages([]);
+      setCurrentSessionId('');
+      setAuthError(null);
+      setIsSigningIn(false);
+      setAuthStatus('guest');
+    }, 400);
+  };
+
+  const handleRequestSignInFromGuest = () => {
+    // If current conversation has messages, confirm with dialog before discarding
+    if (messages.length > 0) {
+      setIsConfirmSignInOpen(true);
+    } else {
+      executeSignInFromGuest();
+    }
+  };
+
+  const executeSignInFromGuest = async () => {
+    setIsConfirmSignInOpen(false);
+    setGuestLoginError(null);
+    try {
+      const res = await signInWithGoogle();
+      if (res.success && res.user) {
+        // Discard guest conversation only after successful login
+        setSessions([]);
+        setMessages([]);
+        setCurrentSessionId('');
+      } else if (res.cancelled) {
+        // Popup closed by user: conversation intact, stays as guest
+      } else if (res.errorMessage) {
+        // Login error: conversation intact, show discrete message
+        setGuestLoginError(res.errorMessage);
+      }
+    } catch {
+      setGuestLoginError('No pudimos conectar con Google. Revisa tu conexión e inténtalo de nuevo.');
+    }
+  };
+
+  const handleSignOut = async () => {
+    try {
+      await signOutUser();
+    } catch (err) {
+      console.warn('Sign out error:', err);
+    }
+    setSessions([]);
+    setMessages([]);
+    setCurrentSessionId('');
+    setActiveTab('home');
+    setAuthStatus('signedOut');
+  };
 
   const handleSelectSession = async (sessionId: string) => {
     setCurrentSessionId(sessionId);
@@ -477,6 +604,26 @@ export default function App() {
 
   const currentSession = sessions.find((s) => s.id === currentSessionId);
 
+  if (authStatus === 'loading') {
+    return (
+      <div className="min-h-screen bg-[#FFFBD9] dark:bg-[#0F1A0F] flex items-center justify-center transition-colors duration-200">
+        <div className="w-8 h-8 rounded-full border-2 border-[#941C2F] dark:border-[#FF9FAE] border-t-transparent animate-spin" />
+      </div>
+    );
+  }
+
+  if (authStatus === 'signedOut') {
+    return (
+      <LoginScreen
+        onGoogle={handleGoogleLogin}
+        onGuest={handleGuestLogin}
+        isSigningIn={isSigningIn}
+        errorMessage={authError}
+        onRetry={handleGoogleLogin}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#FFFBD9] dark:bg-[#0F1A0F] text-[#546C37] dark:text-[#CFE3A8] font-['Space_Grotesk'] flex flex-col selection:bg-[#FDC2B1] dark:selection:bg-[#4A2530] selection:text-[#941C2F] dark:selection:text-[#FF9FAE] transition-colors duration-200">
       {/* Desktop Fixed Left Sidebar Navigation */}
@@ -492,9 +639,13 @@ export default function App() {
         onOpenVoice={() => setIsVoiceOpen(true)}
         isDark={isDark}
         onToggleTheme={toggleTheme}
+        authStatus={authStatus}
+        user={currentUser}
+        onSignOut={handleSignOut}
+        onSignInFromGuest={handleRequestSignInFromGuest}
       />
 
-      {/* Top Header */}
+      {/* Top Header & Guest Notice Banner */}
       <div className="md:pl-64">
         <Header
           activeTab={activeTab}
@@ -503,7 +654,38 @@ export default function App() {
           onOpenVoice={() => setIsVoiceOpen(true)}
           isDark={isDark}
           onToggleTheme={toggleTheme}
+          authStatus={authStatus}
+          user={currentUser}
+          onSignOut={handleSignOut}
+          onSignInFromGuest={handleRequestSignInFromGuest}
         />
+
+        {/* Discrete guest notice banner */}
+        {authStatus === 'guest' && (
+          <div className="h-8 bg-[#F5F2C8] dark:bg-[#1A261A] border-b border-[#ADCA88]/40 dark:border-[#3C5A40]/40 px-3 sm:px-6 flex items-center justify-between text-xs text-[#546C37] dark:text-[#CFE3A8] transition-colors select-none">
+            <div className="flex items-center gap-2 mx-auto">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0"></span>
+              {guestLoginError ? (
+                <span className="text-[#941C2F] dark:text-[#FF9FAE] font-medium truncate">
+                  {guestLoginError}
+                </span>
+              ) : (
+                <span className="font-medium truncate">
+                  Modo invitado: tus conversaciones no se guardarán.
+                </span>
+              )}
+            </div>
+            {guestLoginError && (
+              <button
+                type="button"
+                onClick={() => setGuestLoginError(null)}
+                className="text-[#941C2F] dark:text-[#FF9FAE] hover:opacity-75 text-[10px] font-bold uppercase ml-2 cursor-pointer shrink-0"
+              >
+                Cerrar
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Main Content Area */}
@@ -520,6 +702,8 @@ export default function App() {
             onOpenFormulas={() => setActiveTab('formulas')}
             recentSessions={sessions}
             onSelectSession={handleSelectSession}
+            user={currentUser}
+            authStatus={authStatus}
           />
         )}
 
@@ -538,6 +722,7 @@ export default function App() {
             onSelectSession={handleSelectSession}
             onDeleteSession={handleDeleteSession}
             onRetryDiagram={handleRetryDiagram}
+            hasGuestBanner={authStatus === 'guest'}
           />
         )}
 
@@ -625,6 +810,13 @@ export default function App() {
         isOpen={isVoiceOpen}
         onClose={() => setIsVoiceOpen(false)}
         onSubmitVoicePrompt={handleVoiceSubmit}
+      />
+
+      {/* Guest to Google Account Migration Confirmation Modal */}
+      <ConfirmGuestSignInModal
+        isOpen={isConfirmSignInOpen}
+        onClose={() => setIsConfirmSignInOpen(false)}
+        onConfirm={executeSignInFromGuest}
       />
     </div>
   );

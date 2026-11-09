@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { NewtonMascot } from './NewtonMascot';
+import type { User as FirebaseUser } from 'firebase/auth';
 import { ChatSession, CourseModuleId } from '../types';
 import { 
   Compass, 
@@ -10,12 +10,12 @@ import {
   Trash2, 
   Check, 
   X, 
-  ShieldCheck, 
   User, 
   Cpu, 
   Layers,
   Sun,
-  Moon
+  Moon,
+  LogOut
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -30,6 +30,10 @@ interface SidebarProps {
   onOpenVoice: () => void;
   isDark?: boolean;
   onToggleTheme?: () => void;
+  authStatus?: 'guest' | 'google' | 'loading' | 'signedOut';
+  user?: FirebaseUser | null;
+  onSignOut?: () => void;
+  onSignInFromGuest?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -42,7 +46,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onDeleteSession,
   isDark = false,
   onToggleTheme,
+  authStatus = 'guest',
+  user = null,
+  onSignOut,
+  onSignInFromGuest,
 }) => {
+  const [avatarError, setAvatarError] = useState<boolean>(false);
   const [sessionToDelete, setSessionToDelete] = useState<string | null>(null);
 
   const confirmDelete = async (e: React.MouseEvent, sessionId: string) => {
@@ -65,7 +74,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
         onClick={() => onSelectTab('home')}
         className="p-4 border-b border-[#ADCA88]/40 dark:border-[#3C5A40]/40 flex items-center gap-3 cursor-pointer hover:bg-[#D6E3B1]/20 dark:hover:bg-[#24402B]/30 transition-colors shrink-0"
       >
-        <NewtonMascot size={42} mood="happy" animated />
+        <img
+          src="/newton-mascot.png"
+          alt="Newton AI"
+          className="w-[42px] h-[42px] object-contain drop-shadow-sm transition-transform duration-300 hover:scale-105 shrink-0"
+        />
         <div className="min-w-0">
           <div className="flex items-center gap-1.5">
             <span className="font-['Pixelify_Sans'] text-xl font-bold text-[#546C37] dark:text-[#CFE3A8] tracking-tight">
@@ -298,20 +311,76 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <span className="text-[10px] font-mono font-bold text-[#546C37]/60 dark:text-[#CFE3A8]/60 tracking-wider px-2 uppercase block mb-1">
             Perfil
           </span>
-          <div className="p-2.5 bg-[#D6E3B1]/40 dark:bg-[#24402B]/40 rounded-2xl border border-[#ADCA88]/50 dark:border-[#3C5A40]/50 flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-full bg-[#546C37] dark:bg-[#6E8F47] text-white flex items-center justify-center font-bold text-xs shrink-0">
-              <User className="w-4 h-4" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-xs font-bold text-[#546C37] dark:text-[#CFE3A8] truncate font-['Space_Grotesk']">
-                Estudiante UCSUR
-              </p>
-              <div className="flex items-center gap-1 text-[10px] text-[#546C37]/75 dark:text-[#CFE3A8]/75">
-                <ShieldCheck className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
-                <span className="truncate">Sesión Segura</span>
+          {authStatus === 'google' && user ? (
+            <div className="p-2.5 bg-[#D6E3B1]/40 dark:bg-[#24402B]/40 rounded-2xl border border-[#ADCA88]/50 dark:border-[#3C5A40]/50 flex items-center justify-between gap-2.5">
+              <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                {user.photoURL && !avatarError ? (
+                  <img
+                    src={user.photoURL}
+                    alt={user.displayName || 'Usuario'}
+                    referrerPolicy="no-referrer"
+                    onError={() => setAvatarError(true)}
+                    className="w-8 h-8 rounded-full object-cover border border-[#ADCA88] dark:border-[#3C5A40] shrink-0"
+                  />
+                ) : (
+                  <div className="w-8 h-8 rounded-full bg-[#546C37] dark:bg-[#6E8F47] text-[#FFFBD9] flex items-center justify-center font-bold text-xs shrink-0 select-none">
+                    {user.displayName ? user.displayName.trim().charAt(0).toUpperCase() : (user.email ? user.email.charAt(0).toUpperCase() : 'U')}
+                  </div>
+                )}
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-bold text-[#546C37] dark:text-[#CFE3A8] truncate font-['Space_Grotesk']" title={user.displayName || user.email || 'Estudiante'}>
+                    {user.displayName || user.email || 'Estudiante'}
+                  </p>
+                  <div className="flex items-center gap-1 text-[10px] text-emerald-700 dark:text-emerald-400 font-medium">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 dark:bg-emerald-400"></span>
+                    <span className="truncate">Cuenta Google</span>
+                  </div>
+                </div>
               </div>
+              {onSignOut && (
+                <button
+                  type="button"
+                  onClick={onSignOut}
+                  title="Cerrar sesión"
+                  aria-label="Cerrar sesión"
+                  className="p-1.5 rounded-xl text-[#546C37] dark:text-[#CFE3A8] hover:bg-[#FA8989]/20 hover:text-[#941C2F] dark:hover:text-[#FF9FAE] transition-colors cursor-pointer shrink-0"
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
+              )}
             </div>
-          </div>
+          ) : (
+            <div className="p-2.5 bg-[#D6E3B1]/40 dark:bg-[#24402B]/40 rounded-2xl border border-[#ADCA88]/50 dark:border-[#3C5A40]/50 space-y-2">
+              <div className="flex items-center gap-2.5">
+                <div className="w-7 h-7 rounded-full bg-[#546C37]/80 dark:bg-[#6E8F47]/80 text-[#FFFBD9] flex items-center justify-center font-bold text-xs shrink-0">
+                  <User className="w-4 h-4" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-bold text-[#546C37] dark:text-[#CFE3A8] truncate font-['Space_Grotesk']">
+                    Invitado
+                  </p>
+                  <p className="text-[10px] text-[#546C37]/75 dark:text-[#CFE3A8]/75 truncate">
+                    Sesión no guardada
+                  </p>
+                </div>
+              </div>
+              {onSignInFromGuest && (
+                <button
+                  type="button"
+                  onClick={onSignInFromGuest}
+                  className="w-full py-1.5 px-2.5 rounded-xl border border-[#546C37]/60 dark:border-[#CFE3A8]/60 bg-[#ADCA88]/20 hover:bg-[#ADCA88]/40 dark:bg-[#ADCA88]/10 dark:hover:bg-[#ADCA88]/20 text-[#546C37] dark:text-[#CFE3A8] text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer shadow-2xs"
+                >
+                  <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" aria-hidden="true">
+                    <path fill="#4285F4" d="M22.56 12.25c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.66v3.05h3.88c2.27-2.09 3.66-5.18 3.66-9.15z" />
+                    <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.26v3.15C3.25 21.37 7.34 24 12 24z" />
+                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
+                    <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.34 0 3.25 2.63 1.26 6.58l4.02 3.15c.95-2.83 3.6-4.98 6.72-4.98z" />
+                  </svg>
+                  <span>Iniciar con Google</span>
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </aside>

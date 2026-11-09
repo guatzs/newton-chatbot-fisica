@@ -1,4 +1,5 @@
 import React from 'react';
+import type { User as FirebaseUser } from 'firebase/auth';
 import { NewtonMascot } from './NewtonMascot';
 import { COURSE_MODULES, PHYSICAL_CONSTANTS } from '../data/syllabus';
 import { CourseModuleId, ChatSession } from '../types';
@@ -23,6 +24,8 @@ interface HomeViewProps {
   onOpenFormulas: () => void;
   recentSessions: ChatSession[];
   onSelectSession: (sessionId: string) => void;
+  user?: FirebaseUser | null;
+  authStatus?: 'guest' | 'google' | 'loading' | 'signedOut';
 }
 
 export const HomeView: React.FC<HomeViewProps> = ({
@@ -33,9 +36,19 @@ export const HomeView: React.FC<HomeViewProps> = ({
   onOpenFormulas,
   recentSessions,
   onSelectSession,
+  user = null,
+  authStatus = 'guest',
 }) => {
   const [quickInput, setQuickInput] = React.useState('');
   const [curiousFactIndex, setCuriousFactIndex] = React.useState(0);
+
+  const getGreeting = () => {
+    if (authStatus === 'google' && user?.displayName) {
+      const firstName = user.displayName.trim().split(/\s+/)[0];
+      if (firstName) return `¡Hola, ${firstName}!`;
+    }
+    return '¡Hola!';
+  };
 
   const curiousFacts = [
     'La constante de Coulomb k ≈ 8.99 × 10⁹ N·m²/C² equivale a 1 / (4πε₀).',
@@ -61,7 +74,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
             FÍSICA UNIVERSITARIA • UCSUR
           </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-[#546C37] dark:text-[#CFE3A8] font-['Pixelify_Sans'] tracking-tight">
-            ¡Hola! Soy Newton
+            {getGreeting()}
           </h1>
           <p className="text-xs sm:text-sm text-[#546C37]/80 dark:text-[#CFE3A8]/80 max-w-md font-['Space_Grotesk'] leading-relaxed">
             Soy tu tutor de Física Aplicada. Estoy listo para ayudarte con Electrostática, Electrodinámica, Magnetismo y Electrónica.

@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+
+<html lang="es"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Newton AI - Iniciar Sesión</title>
+<!-- Tailwind CSS v3 with Plugins -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- Google Fonts: Pixelify Sans & Space Grotesk -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@600;700&amp;family=Space+Grotesk:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind Configuration -->
+<script data-purpose="tailwind-config">
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              forest: '#546C37',
+              sage: '#ADCA88',
+              cream: '#FFFBD9',
+              burgundy: '#4A0E18',
+              coral: '#FA8989',
+              blush: '#FDC2B1'
+            }
+          },
+          fontFamily: {
+            pixel: ['"Pixelify Sans"', 'cursive'],
+            grotesk: ['"Space Grotesk"', 'sans-serif']
+          }
+        }
+      }
+    };
+  </script>
+<!-- Base Custom Styling -->
+<style data-purpose="base-styling">
+    body {
+      background-color: #FFFBD9;
+      font-family: 'Space Grotesk', sans-serif;
+      margin: 0;
+      padding: 0;
+    }
+
+    /* Idle subtle gentle float animation */
+    @keyframes gentleFloat {
+      0%, 100% {
+        transform: translateY(0px) rotate(0deg);
+      }
+      50% {
+        transform: translateY(-4px) rotate(1deg);
+      }
+    }
+
+    /* Joy / celebration bounce & squish-stretch micro-animation on login */
+    @keyframes happyMascotBounce {
+      0% {
+        transform: scale(1, 1) translateY(0) rotate(0deg);
+      }
+      15% {
+        transform: scale(1.12, 0.88) translateY(6px) rotate(-3deg);
+      }
+      35% {
+        transform: scale(0.92, 1.15) translateY(-22px) rotate(4deg);
+      }
+      55% {
+        transform: scale(1.06, 0.95) translateY(2px) rotate(-2deg);
+      }
+      70% {
+        transform: scale(0.97, 1.05) translateY(-8px) rotate(1.5deg);
+      }
+      85% {
+        transform: scale(1.02, 0.98) translateY(0) rotate(-0.5deg);
+      }
+      100% {
+        transform: scale(1, 1) translateY(0) rotate(0deg);
+      }
+    }
+
+    .mascot-idle {
+      animation: gentleFloat 4s ease-in-out infinite;
+    }
+
+    .mascot-celebrate {
+      animation: happyMascotBounce 0.9s cubic-bezier(0.28, 0.84, 0.42, 1) infinite !important;
+      transform-origin: bottom center;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .mascot-idle,
+      .mascot-celebrate {
+        animation: none !important;
+      }
+    }
+  </style>
+</head>
+<body class="bg-brand-cream text-brand-burgundy antialiased selection:bg-brand-sage/40 selection:text-brand-burgundy">
+<!-- BEGIN: MainContent -->
+<main class="min-h-screen w-full flex flex-col items-center justify-center px-4 py-8" data-purpose="login-viewport">
+<!-- Central Login Card Container -->
+<div class="w-full max-w-[420px] mx-auto flex flex-col items-center text-center" data-purpose="auth-card">
+<!-- Mascot Sticker Section -->
+<div class="mb-5 flex justify-center" data-purpose="mascot-container">
+<img alt="Newton AI" class="w-36 h-36 object-contain mx-auto filter drop-shadow-sm transition-transform duration-200 hover:scale-105 select-none mascot-idle will-change-transform" id="newton-mascot" src="https://lh3.googleusercontent.com/aida-public/AB6AXuB1JB63C7ALJBl9EsOYEfj9QCVHvD4LZ7ZWyYOCrQ1HrfLvH-r-3RXo7cO50Nu5uhGJ1dIHURaW3c8-A7CDHpoimkTVP51papcUpNKle0cW9WUfsBVdKiVEBWNw5JPio7yDyF46dMxIGT0ZvOVT_-YwPJyi-90YeUcy3gNsL31GVSDDepdkPx2NVUfRR1cbpWQaYnoA_aV2GD-pWNSV5RbzCN07p0lMgDBH2S6VQ9J0"/>
+</div>
+<!-- Brand Heading and Role Description -->
+<div class="mb-10" data-purpose="header-titles">
+<h1 class="font-pixel text-4xl sm:text-[40px] text-brand-burgundy tracking-tight leading-none mb-2 select-none">
+          Newton AI
+        </h1>
+<p class="font-grotesk text-base font-normal text-brand-forest tracking-normal">
+          Tu tutor de Física Aplicada
+        </p>
+</div>
+<!-- Action Buttons Block -->
+<div class="w-full max-w-[320px] mx-auto flex flex-col gap-3.5" data-purpose="auth-actions">
+<!-- Primary Action: Continue with Google -->
+<button aria-label="Continuar con Google" class="w-full h-[50px] min-h-[50px] px-6 rounded-full bg-brand-forest text-brand-cream font-grotesk font-semibold text-sm sm:text-base flex items-center justify-center gap-3 shadow-sm hover:brightness-105 active:scale-[0.99] transition-all duration-150 cursor-pointer no-underline select-none border-0" data-purpose="google-login-button" id="google-login-btn" onclick="handleGoogleLogin(this)" type="button"><svg aria-hidden="true" class="w-5 h-5 flex-shrink-0" viewbox="0 0 24 24"><path d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.66v3.05h3.88c2.27-2.09 3.66-5.18 3.66-9.15z" fill="#4285F4"></path><path d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.26v3.15C3.25 21.37 7.34 24 12 24z" fill="#34A853"></path><path d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.14-1.55.38-2.27V6.58H1.26C.46 8.16 0 9.94 0 12s.46 3.84 1.26 5.42l4.02-3.15z" fill="#FBBC05"></path><path d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.34 0 3.25 2.63 1.26 6.58l4.02 3.15c.95-2.83 3.6-4.98 6.72-4.98z" fill="#EA4335"></path></svg><span class="">Continuar con Google</span></button>
+<!-- Secondary Action: Guest Access -->
+<a aria-label="Entrar como invitado" class="w-full h-[50px] min-h-[50px] px-6 rounded-full border-[1.5px] border-brand-forest bg-[#ADCA88]/15 text-brand-forest font-grotesk font-semibold text-sm sm:text-base flex items-center justify-center hover:bg-[#ADCA88]/30 active:scale-[0.99] transition-all duration-150 cursor-pointer no-underline select-none" data-purpose="guest-login-button" href="#" id="guest-login-btn" onclick="handleGuestLogin(this, event)" role="button">
+          Entrar como invitado
+        </a>
+</div>
+<!-- Guest Disclaimer Notice -->
+<p class="font-grotesk text-xs text-brand-forest/75 mt-4 tracking-normal" data-purpose="guest-disclaimer">
+        Como invitado, tus conversaciones no se guardarán.
+      </p>
+</div>
+</main>
+<!-- END: MainContent -->
+<script>
+  function triggerMascotAnimation() {
+    var mascot = document.getElementById('newton-mascot');
+    if (mascot) {
+      mascot.classList.remove('mascot-idle');
+      mascot.classList.add('mascot-celebrate');
+    }
+  }
+
+  function handleGoogleLogin(btn) {
+    if (btn.dataset.loading === 'true') return;
+    btn.dataset.loading = 'true';
+    btn.style.pointerEvents = 'none';
+    btn.style.opacity = '0.9';
+
+    // Trigger joy celebration bounce micro-animation on Newton mascot
+    triggerMascotAnimation();
+
+    btn.innerHTML = '<svg class="animate-spin h-5 w-5 text-brand-cream" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3.5"></circle><path class="opacity-90" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg><span>Iniciando sesión...</span>';
+    
+    setTimeout(function() {
+      btn.innerHTML = '<svg class="w-5 h-5 text-brand-cream" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"></path></svg><span>¡Conectado!</span>';
+      setTimeout(function() {
+        window.location.hash = '#home';
+      }, 500);
+    }, 2200);
+  }
+
+  function handleGuestLogin(btn, event) {
+    if (event) event.preventDefault();
+    if (btn.dataset.loading === 'true') return;
+    btn.dataset.loading = 'true';
+    btn.style.pointerEvents = 'none';
+
+    // Trigger joy celebration bounce micro-animation on Newton mascot
+    triggerMascotAnimation();
+
+    btn.innerHTML = '<svg class="animate-spin h-4 w-4 text-brand-forest mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3.5"></circle><path class="opacity-90" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg><span>Entrando...</span>';
+    
+    setTimeout(function() {
+      window.location.hash = '#home';
+    }, 700);
+  }
+</script>
+</body></html>

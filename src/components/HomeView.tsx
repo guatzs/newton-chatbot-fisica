@@ -25,7 +25,8 @@ interface HomeViewProps {
   recentSessions: ChatSession[];
   onSelectSession: (sessionId: string) => void;
   user?: FirebaseUser | null;
-  authStatus?: 'guest' | 'google' | 'loading' | 'signedOut';
+  userVersion?: number;
+  authStatus?: 'guest' | 'google' | 'loading' | 'signedOut' | 'verifyEmail';
 }
 
 export const HomeView: React.FC<HomeViewProps> = ({
@@ -37,6 +38,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
   recentSessions,
   onSelectSession,
   user = null,
+  userVersion: _userVersion = 0,
   authStatus = 'guest',
 }) => {
   const [quickInput, setQuickInput] = React.useState('');

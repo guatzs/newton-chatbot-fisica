@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { User } from 'firebase/auth';
 import { 
   Compass, 
@@ -9,7 +9,8 @@ import {
   Moon, 
   Camera, 
   Mic, 
-  LogOut 
+  LogOut,
+  LogIn
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -19,8 +20,9 @@ interface HeaderProps {
   onOpenVoice: () => void;
   isDark?: boolean;
   onToggleTheme?: () => void;
-  authStatus?: 'guest' | 'google' | 'loading' | 'signedOut';
+  authStatus?: 'guest' | 'google' | 'loading' | 'signedOut' | 'verifyEmail';
   user?: User | null;
+  userVersion?: number;
   onSignOut?: () => void;
   onSignInFromGuest?: () => void;
 }
@@ -34,10 +36,15 @@ export const Header: React.FC<HeaderProps> = ({
   onToggleTheme,
   authStatus = 'guest',
   user = null,
+  userVersion = 0,
   onSignOut,
   onSignInFromGuest,
 }) => {
   const [avatarError, setAvatarError] = useState(false);
+
+  useEffect(() => {
+    setAvatarError(false);
+  }, [user?.photoURL, userVersion]);
 
   const getTabLabel = () => {
     switch (activeTab) {
@@ -184,16 +191,11 @@ export const Header: React.FC<HeaderProps> = ({
                 <button
                   type="button"
                   onClick={onSignInFromGuest}
-                  title="Iniciar sesión con Google"
-                  aria-label="Iniciar sesión con Google"
+                  title="Iniciar sesión"
+                  aria-label="Iniciar sesión"
                   className="inline-flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-full border border-[#546C37]/60 dark:border-[#CFE3A8]/60 bg-[#ADCA88]/15 dark:bg-[#ADCA88]/10 hover:bg-[#ADCA88]/30 dark:hover:bg-[#ADCA88]/20 text-[#546C37] dark:text-[#CFE3A8] text-xs font-semibold transition-all cursor-pointer shadow-2xs"
                 >
-                  <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" aria-hidden="true">
-                    <path fill="#4285F4" d="M22.56 12.25c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.66v3.05h3.88c2.27-2.09 3.66-5.18 3.66-9.15z" />
-                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
-                    <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.34 0 3.25 2.63 1.26 6.58l4.02 3.15c.95-2.83 3.6-4.98 6.72-4.98z" />
-                  </svg>
+                  <LogIn className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
                   <span className="hidden sm:inline">Iniciar sesión</span>
                 </button>
               )}

@@ -17,7 +17,13 @@ import {
   signInWithRedirect, 
   getRedirectResult, 
   signOut, 
-  onAuthStateChanged, 
+  onAuthStateChanged,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  sendEmailVerification,
+  sendPasswordResetEmail,
+  updateProfile,
+  reload,
   User, 
   Unsubscribe 
 } from 'firebase/auth';
@@ -35,6 +41,7 @@ try {
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId || '(default)');
 export const auth = getAuth(app);
+auth.languageCode = 'es';
 
 const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });
@@ -44,6 +51,145 @@ export interface AuthResult {
   user?: User;
   cancelled?: boolean;
   errorMessage?: string;
+}
+
+/**
+ * Translates Firebase Auth error codes into user-friendly Spanish messages.
+ */
+export function translateAuthError(err: unknown): string {
+  const fbErr = err as { code?: string; message?: string };
+  const rawCode = fbErr?.code || '';
+  const code = rawCode.startsWith('auth/') ? rawCode : `auth/${rawCode}`;
+
+  switch (code) {
+    case 'auth/email-already-in-use':
+      return 'Ya existe una cuenta con este correo. Inicia sesión o recupera tu contraseña.';
+    case 'auth/invalid-credential':
+    case 'auth/invalid-login-credentials':
+    case 'auth/wrong-password':
+    case 'auth/user-not-found':
+      return 'Correo o contraseña incorrectos.';
+    case 'auth/invalid-email':
+      return 'El correo no tiene un formato válido.';
+    case 'auth/too-many-requests':
+      return 'Demasiados intentos. Espera unos minutos e inténtalo de nuevo.';
+    case 'auth/network-request-failed':
+      return 'No hay conexión. Revisa tu internet e inténtalo de nuevo.';
+    case 'auth/weak-password':
+    case 'auth/password-does-not-meet-requirements':
+      return 'La contraseña es demasiado débil. Revisa los requisitos.';
+    case 'auth/operation-not-allowed':
+      return 'El inicio de sesión con correo no está activado en Firebase.';
+    case 'auth/account-exists-with-different-credential':
+      return 'Este correo ya está asociado a otro método de acceso. Inicia sesión con ese método.';
+    default:
+      return 'Ocurrió un error inesperado. Inténtalo de nuevo.';
+  }
+}
+
+/**
+ * Registers a new user with email and password, sets displayName, and sends verification email.
+ */
+export async function registerWithEmail(
+  name: string,
+  email: string,
+  password: string
+): Promise<AuthResult> {
+  try {
+    const cred = await createUserWithEmailAndPassword(auth, email, password);
+    try {
+      await updateProfile(cred.user, { displayName: name });
+    } catch {
+      // Ignore profile update failure
+    }
+    try {
+      await sendEmailVerification(cred.user);
+    } catch {
+      // Ignore email verification failure; user can use Resend later
+    }
+    return { success: true, user: cred.user };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      errorMessage: translateAuthError(err),
+    };
+  }
+}
+
+/**
+ * Signs in an existing user with email and password.
+ */
+export async function signInWithEmail(email: string, password: string): Promise<AuthResult> {
+  try {
+    const cred = await signInWithEmailAndPassword(auth, email, password);
+    return { success: true, user: cred.user };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      errorMessage: translateAuthError(err),
+    };
+  }
+}
+
+/**
+ * Resends the email verification message to the current user.
+ */
+export async function resendVerificationEmail(): Promise<AuthResult> {
+  if (!auth.currentUser) {
+    return {
+      success: false,
+      errorMessage: 'No hay ninguna sesión activa.',
+    };
+  }
+  try {
+    await sendEmailVerification(auth.currentUser);
+    return { success: true, user: auth.currentUser };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      errorMessage: translateAuthError(err),
+    };
+  }
+}
+
+/**
+ * Sends a password reset email. Returns success even if user is not found to avoid enumeration.
+ */
+export async function sendPasswordReset(email: string): Promise<AuthResult> {
+  try {
+    await sendPasswordResetEmail(auth, email);
+    return { success: true };
+  } catch (err: unknown) {
+    const fbErr = err as { code?: string };
+    if (fbErr?.code === 'auth/user-not-found') {
+      return { success: true };
+    }
+    return {
+      success: false,
+      errorMessage: translateAuthError(err),
+    };
+  }
+}
+
+/**
+ * Reloads the current user and refreshes their ID token if email is verified.
+ */
+export async function refreshEmailVerification(): Promise<boolean> {
+  if (!auth.currentUser) return false;
+  await reload(auth.currentUser);
+  if (auth.currentUser.emailVerified) {
+    await auth.currentUser.getIdToken(true);
+  }
+  return auth.currentUser.emailVerified;
+}
+
+/**
+ * Returns true if the user signed up with email/password and has not verified their email yet.
+ */
+export function needsEmailVerification(user: User | null): boolean {
+  if (!user) return false;
+  const hasPasswordProvider = user.providerData.some((p) => p.providerId === 'password');
+  return hasPasswordProvider && !user.emailVerified;
 }
 
 /**

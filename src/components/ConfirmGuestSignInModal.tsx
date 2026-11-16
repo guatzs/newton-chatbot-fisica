@@ -58,7 +58,7 @@ export const ConfirmGuestSignInModal: React.FC<ConfirmGuestSignInModalProps> = (
             id="confirm-signin-title"
             className="text-base font-bold text-[#3A4D25] dark:text-[#E2F1C8] leading-tight"
           >
-            Iniciar sesión con Google
+            Iniciar sesión
           </h3>
         </div>
 

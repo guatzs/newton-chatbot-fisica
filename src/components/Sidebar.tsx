@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { User as FirebaseUser } from 'firebase/auth';
 import { ChatSession, CourseModuleId } from '../types';
 import { 
@@ -15,7 +15,8 @@ import {
   Layers,
   Sun,
   Moon,
-  LogOut
+  LogOut,
+  LogIn
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -30,8 +31,9 @@ interface SidebarProps {
   onOpenVoice: () => void;
   isDark?: boolean;
   onToggleTheme?: () => void;
-  authStatus?: 'guest' | 'google' | 'loading' | 'signedOut';
+  authStatus?: 'guest' | 'google' | 'loading' | 'signedOut' | 'verifyEmail';
   user?: FirebaseUser | null;
+  userVersion?: number;
   onSignOut?: () => void;
   onSignInFromGuest?: () => void;
 }
@@ -48,11 +50,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onToggleTheme,
   authStatus = 'guest',
   user = null,
+  userVersion = 0,
   onSignOut,
   onSignInFromGuest,
 }) => {
   const [avatarError, setAvatarError] = useState<boolean>(false);
   const [sessionToDelete, setSessionToDelete] = useState<string | null>(null);
+
+  useEffect(() => {
+    setAvatarError(false);
+  }, [user?.photoURL, userVersion]);
 
   const confirmDelete = async (e: React.MouseEvent, sessionId: string) => {
     e.stopPropagation();
@@ -333,7 +340,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   </p>
                   <div className="flex items-center gap-1 text-[10px] text-emerald-700 dark:text-emerald-400 font-medium">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 dark:bg-emerald-400"></span>
-                    <span className="truncate">Cuenta Google</span>
+                    <span className="truncate">
+                      {user.providerData.some((p) => p.providerId === 'google.com')
+                        ? 'Cuenta Google'
+                        : 'Correo verificado'}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -370,13 +381,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   onClick={onSignInFromGuest}
                   className="w-full py-1.5 px-2.5 rounded-xl border border-[#546C37]/60 dark:border-[#CFE3A8]/60 bg-[#ADCA88]/20 hover:bg-[#ADCA88]/40 dark:bg-[#ADCA88]/10 dark:hover:bg-[#ADCA88]/20 text-[#546C37] dark:text-[#CFE3A8] text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer shadow-2xs"
                 >
-                  <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" aria-hidden="true">
-                    <path fill="#4285F4" d="M22.56 12.25c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.66v3.05h3.88c2.27-2.09 3.66-5.18 3.66-9.15z" />
-                    <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.26v3.15C3.25 21.37 7.34 24 12 24z" />
-                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
-                    <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.34 0 3.25 2.63 1.26 6.58l4.02 3.15c.95-2.83 3.6-4.98 6.72-4.98z" />
-                  </svg>
-                  <span>Iniciar con Google</span>
+                  <LogIn className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                  <span>Iniciar sesión</span>
                 </button>
               )}
             </div>

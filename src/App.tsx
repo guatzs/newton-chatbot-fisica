@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import type { User } from 'firebase/auth';
 import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
@@ -9,6 +9,7 @@ import { FormulasView } from './components/FormulasView';
 import { ScannerModal } from './components/ScannerModal';
 import { VoiceModal } from './components/VoiceModal';
 import { LoginScreen } from './components/LoginScreen';
+import { VerifyEmailScreen } from './components/VerifyEmailScreen';
 import { ConfirmGuestSignInModal } from './components/ConfirmGuestSignInModal';
 import { ChatSession, ChatMessage, CourseModuleId } from './types';
 import { 
@@ -20,21 +21,29 @@ import {
   signInWithGoogle,
   signOutUser,
   subscribeToAuth,
-  checkRedirectResult
+  checkRedirectResult,
+  needsEmailVerification
 } from './firebase';
 import { Home, MessageSquare, Activity, BookOpen } from 'lucide-react';
 import { useTheme } from './hooks/useTheme';
 
-type AuthStatus = 'loading' | 'signedOut' | 'guest' | 'google';
+type AuthStatus = 'loading' | 'signedOut' | 'guest' | 'google' | 'verifyEmail';
 
 export default function App() {
   const { toggleTheme, isDark } = useTheme();
   const [authStatus, setAuthStatus] = useState<AuthStatus>('loading');
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [userVersion, setUserVersion] = useState<number>(0);
   const [isSigningIn, setIsSigningIn] = useState<boolean>(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [isConfirmSignInOpen, setIsConfirmSignInOpen] = useState<boolean>(false);
   const [guestLoginError, setGuestLoginError] = useState<string | null>(null);
+  const [hasGuestBackup, setHasGuestBackup] = useState<boolean>(false);
+  const guestBackupRef = useRef<{
+    sessions: ChatSession[];
+    messages: ChatMessage[];
+    currentSessionId: string;
+  } | null>(null);
 
   const [activeTab, setActiveTab] = useState<'home' | 'chat' | 'simulators' | 'formulas'>('home');
   const [sessions, setSessions] = useState<ChatSession[]>([]);
@@ -51,6 +60,12 @@ export default function App() {
 
     checkRedirectResult().then((user) => {
       if (user && isMounted) {
+        if (needsEmailVerification(user)) {
+          setCurrentUser(user);
+          setAuthStatus('verifyEmail');
+          setAuthError(null);
+          return;
+        }
         setCurrentUser(user);
         setAuthStatus('google');
       }
@@ -58,7 +73,27 @@ export default function App() {
 
     const unsubscribe = subscribeToAuth((user) => {
       if (!isMounted) return;
+      if (user && needsEmailVerification(user)) {
+        if (guestBackupRef.current) {
+          guestBackupRef.current = null;
+          setHasGuestBackup(false);
+          setSessions([]);
+          setMessages([]);
+          setCurrentSessionId('');
+        }
+        setCurrentUser(user);
+        setAuthStatus('verifyEmail');
+        setAuthError(null);
+        return;
+      }
       if (user) {
+        if (guestBackupRef.current) {
+          guestBackupRef.current = null;
+          setHasGuestBackup(false);
+          setSessions([]);
+          setMessages([]);
+          setCurrentSessionId('');
+        }
         setCurrentUser(user);
         setAuthStatus('google');
         setAuthError(null);
@@ -127,6 +162,8 @@ export default function App() {
   const handleGuestLogin = () => {
     setIsSigningIn(true);
     setTimeout(() => {
+      guestBackupRef.current = null;
+      setHasGuestBackup(false);
       setSessions([]);
       setMessages([]);
       setCurrentSessionId('');
@@ -137,7 +174,7 @@ export default function App() {
   };
 
   const handleRequestSignInFromGuest = () => {
-    // If current conversation has messages, confirm with dialog before discarding
+    // If current conversation has messages, confirm with dialog before transitioning to login
     if (messages.length > 0) {
       setIsConfirmSignInOpen(true);
     } else {
@@ -145,25 +182,35 @@ export default function App() {
     }
   };
 
-  const executeSignInFromGuest = async () => {
+  const executeSignInFromGuest = () => {
     setIsConfirmSignInOpen(false);
     setGuestLoginError(null);
-    try {
-      const res = await signInWithGoogle();
-      if (res.success && res.user) {
-        // Discard guest conversation only after successful login
-        setSessions([]);
-        setMessages([]);
-        setCurrentSessionId('');
-      } else if (res.cancelled) {
-        // Popup closed by user: conversation intact, stays as guest
-      } else if (res.errorMessage) {
-        // Login error: conversation intact, show discrete message
-        setGuestLoginError(res.errorMessage);
-      }
-    } catch {
-      setGuestLoginError('No pudimos conectar con Google. Revisa tu conexión e inténtalo de nuevo.');
+    setAuthError(null);
+    guestBackupRef.current = {
+      sessions,
+      messages,
+      currentSessionId,
+    };
+    setHasGuestBackup(true);
+    setAuthStatus('signedOut');
+  };
+
+  const handleBackToGuest = () => {
+    const backup = guestBackupRef.current;
+    if (backup) {
+      setSessions(backup.sessions);
+      setMessages(backup.messages);
+      setCurrentSessionId(backup.currentSessionId);
+      guestBackupRef.current = null;
+      setHasGuestBackup(false);
     }
+    setAuthError(null);
+    setAuthStatus('guest');
+  };
+
+  const handleEmailVerified = () => {
+    setUserVersion((v) => v + 1);
+    setAuthStatus('google');
   };
 
   const handleSignOut = async () => {
@@ -172,6 +219,8 @@ export default function App() {
     } catch (err) {
       console.warn('Sign out error:', err);
     }
+    guestBackupRef.current = null;
+    setHasGuestBackup(false);
     setSessions([]);
     setMessages([]);
     setCurrentSessionId('');
@@ -612,6 +661,16 @@ export default function App() {
     );
   }
 
+  if (authStatus === 'verifyEmail') {
+    return (
+      <VerifyEmailScreen
+        email={currentUser?.email || ''}
+        onVerified={handleEmailVerified}
+        onSignOut={handleSignOut}
+      />
+    );
+  }
+
   if (authStatus === 'signedOut') {
     return (
       <LoginScreen
@@ -620,6 +679,7 @@ export default function App() {
         isSigningIn={isSigningIn}
         errorMessage={authError}
         onRetry={handleGoogleLogin}
+        onBack={hasGuestBackup ? handleBackToGuest : undefined}
       />
     );
   }
@@ -641,6 +701,7 @@ export default function App() {
         onToggleTheme={toggleTheme}
         authStatus={authStatus}
         user={currentUser}
+        userVersion={userVersion}
         onSignOut={handleSignOut}
         onSignInFromGuest={handleRequestSignInFromGuest}
       />
@@ -656,6 +717,7 @@ export default function App() {
           onToggleTheme={toggleTheme}
           authStatus={authStatus}
           user={currentUser}
+          userVersion={userVersion}
           onSignOut={handleSignOut}
           onSignInFromGuest={handleRequestSignInFromGuest}
         />
@@ -703,6 +765,7 @@ export default function App() {
             recentSessions={sessions}
             onSelectSession={handleSelectSession}
             user={currentUser}
+            userVersion={userVersion}
             authStatus={authStatus}
           />
         )}

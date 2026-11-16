@@ -14,16 +14,29 @@ export interface CourseModule {
   sampleQuestions: string[];
 }
 
+export type SimulationType = 'conductor_gauss' | 'circuito_rc' | 'diodo_iv' | 'coulomb' | 'ohm';
+
+export type SimulationParams = Record<string, number>;
+
+export interface SimulationAdjustment {
+  key: string;
+  requested: number | string;
+  applied: number;
+}
+
 export interface ChatMessage {
   id: string;
   sessionId: string;
   sender: 'user' | 'bot';
   text: string;
   timestamp: string;
+  createdAt?: string;
   formula?: string;
   formulaTitle?: string;
   quickChips?: string[];
-  simulationType?: 'conductor_gauss' | 'circuito_rc' | 'diodo_iv';
+  simulationType?: SimulationType;
+  simulationParams?: SimulationParams;
+  simulationAdjusted?: SimulationAdjustment[];
   imageUrl?: string;
   imageNote?: string;
   isAudio?: boolean;

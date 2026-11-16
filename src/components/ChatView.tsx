@@ -8,6 +8,8 @@ import { COURSE_MODULES } from '../data/syllabus';
 import { SphericalConductorSim } from './simulators/SphericalConductorSim';
 import { RcCircuitSim } from './simulators/RcCircuitSim';
 import { DiodeIvSim } from './simulators/DiodeIvSim';
+import { CoulombSim } from './simulators/CoulombSim';
+import { OhmSim } from './simulators/OhmSim';
 import { SpeechService } from '../utils/speech';
 import { 
   Send, 
@@ -34,6 +36,7 @@ interface ChatViewProps {
   onOpenScanner: () => void;
   onOpenVoice: () => void;
   isLoading: boolean;
+  loadingMessages?: boolean;
   activeTopic?: string;
   activeModuleId?: CourseModuleId;
   onNewSession: () => void;
@@ -51,6 +54,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
   onOpenScanner,
   onOpenVoice,
   isLoading,
+  loadingMessages = false,
   activeTopic = 'Tutoría de Física Aplicada',
   activeModuleId = 'electrostatica',
   onNewSession,
@@ -76,7 +80,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
 
   const handleSend = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!inputText.trim() || isLoading) return;
+    if (!inputText.trim() || isLoading || loadingMessages) return;
     const text = inputText.trim();
     setInputText('');
     await onSendMessage(text);
@@ -437,14 +441,15 @@ export const ChatView: React.FC<ChatViewProps> = ({
                     )}
 
                     {/* Diagram Error Notification */}
-                    {msg.diagramError && (
+                    {(msg.diagramError || (msg.diagramPrompt && !msg.diagramUrl && !msg.diagramLoading)) && (
                       <div className="mt-3 p-3 rounded-2xl bg-[#FFF2EE] dark:bg-[#3A1820] border border-[#FA8989] dark:border-[#8A3A4A] flex items-start justify-between gap-2.5 text-xs text-[#941C2F] dark:text-[#FF9FAE] animate-in fade-in duration-200">
                         <div className="flex items-start gap-2">
                           <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-[#941C2F] dark:text-[#FF9FAE]" />
                           <div>
                             <span className="font-bold block font-mono text-[11px]">Aviso sobre el diagrama</span>
                             <span className="text-[11px] font-['Space_Grotesk'] text-[#3D121A]/85 dark:text-[#FBE9E4]/85 block mt-0.5">
-                              {msg.diagramError}
+                              {msg.diagramError ||
+                                'No se pudo generar el diagrama visual. Puedes continuar con el análisis analítico o reintentarlo.'}
                             </span>
                           </div>
                         </div>
@@ -491,6 +496,24 @@ export const ChatView: React.FC<ChatViewProps> = ({
                     {msg.simulationType === 'diodo_iv' && (
                       <div className="mt-3">
                         <DiodeIvSim />
+                      </div>
+                    )}
+                    {msg.simulationType === 'coulomb' && (
+                      <div className="mt-3">
+                        <CoulombSim
+                          compact
+                          initialParams={msg.simulationParams}
+                          adjusted={msg.simulationAdjusted}
+                        />
+                      </div>
+                    )}
+                    {msg.simulationType === 'ohm' && (
+                      <div className="mt-3">
+                        <OhmSim
+                          compact
+                          initialParams={msg.simulationParams}
+                          adjusted={msg.simulationAdjusted}
+                        />
                       </div>
                     )}
                   </div>
@@ -560,13 +583,13 @@ export const ChatView: React.FC<ChatViewProps> = ({
                 value={inputText}
                 onChange={(e) => setInputText(e.target.value)}
                 placeholder="Pregúntale a Newton o formula una hipótesis..."
-                disabled={isLoading}
+                disabled={isLoading || loadingMessages}
                 className="flex-1 bg-transparent px-2 text-xs sm:text-sm text-[#546C37] dark:text-[#CFE3A8] placeholder-[#546C37]/50 dark:placeholder-[#CFE3A8]/50 focus:outline-none font-['Space_Grotesk']"
               />
 
               <button
                 type="submit"
-                disabled={!inputText.trim() || isLoading}
+                disabled={!inputText.trim() || isLoading || loadingMessages}
                 className="w-9 h-9 rounded-full bg-[#546C37] dark:bg-[#6E8F47] hover:bg-[#546C37]/90 dark:hover:bg-[#6E8F47]/90 disabled:opacity-40 text-white flex items-center justify-center transition-transform active:scale-95 shrink-0 shadow-xs cursor-pointer"
               >
                 <Send className="w-4 h-4 text-white" />

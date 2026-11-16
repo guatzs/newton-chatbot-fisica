@@ -1,4 +1,6 @@
 import { GoogleGenAI } from '@google/genai';
+import { SimulationAdjustment, SimulationParams, SimulationType } from '../types';
+import { parseSimulacion } from './simulationMarker';
 
 export const NEWTON_SYSTEM_INSTRUCTION = `
 Eres "Newton", el tutor académico con inteligencia artificial para el curso universitario de Física Aplicada (código 815972, ciclo 2026-I) de la Universidad Científica del Sur (UCSUR).
@@ -94,7 +96,18 @@ REGLAS DE RIGOR Y FORMATO DE RESPUESTA:
 
    Los simuladores interactivos de Newton (conductor de Gauss, circuito RC, diodo I-V) son independientes del diagrama: puedes mencionarlos en texto cuando el tema coincida, pero no los uses como sustituto de [DIAGRAMA].
 
-5. Sugerencias de profundización:
+5. Simulaciones interactivas prefabricadas:
+   - Cuando el estudiante pida ver, probar o simular la ley de Coulomb (dos cargas puntuales alineadas) o la ley de Ohm (batería y resistencia), o cuando resuelvas un ejercicio numérico de esos dos temas, agrega UNA sola línea [SIMULACION]: antes de [SUGERENCIAS]:, con uno de estos formatos exactos:
+     [SIMULACION]: coulomb | q1=<número> | q2=<número> | r=<número>
+     [SIMULACION]: ohm | v=<número> | res=<número>
+   - Unidades fijas: q1 y q2 en microcoulombs (µC), r en metros (m), v en voltios (V), res en ohmios (Ω). Convierte antes de escribir.
+   - Escribe solo números con punto decimal (ejemplo 0.5), sin unidades, sin separador de miles y sin notación científica.
+   - Usa los datos del ejercicio del estudiante. Si un dato no se dio, omite ese parámetro; no lo inventes.
+   - No escribas la línea si el tema no es Coulomb u Ohm, ni cuando respondas que el tema está fuera del sílabo.
+   - Explica primero con texto; la simulación se mostrará debajo automáticamente. No menciones la línea [SIMULACION]: al estudiante.
+   - Nunca escribas código HTML, SVG, Canvas ni JavaScript.
+
+6. Sugerencias de profundización:
    - Al final de tu mensaje, incluye de 2 a 4 preguntas o sugerencias de profundización para el estudiante en el siguiente formato exacto:
    [SUGERENCIAS]: Sugerencia 1 | Sugerencia 2 | Sugerencia 3
 `;
@@ -174,26 +187,35 @@ export function isRetryableModelError(err: any): boolean {
 }
 
 /**
- * Filters out [DIAGRAMA] and [SUGERENCIAS] tags during live streaming to prevent control tokens from leaking.
+ * Filters out [DIAGRAMA], [SIMULACION] and [SUGERENCIAS] tags during live streaming to prevent control tokens from leaking.
  */
 function getSafeVisibleText(accumulated: string): string {
-  const dIndex = accumulated.indexOf('[DIAGRAMA]');
-  const sIndex = accumulated.indexOf('[SUGERENCIAS]');
-  let cutoff = accumulated.length;
-  if (dIndex !== -1 && dIndex < cutoff) cutoff = dIndex;
-  if (sIndex !== -1 && sIndex < cutoff) cutoff = sIndex;
-  
+  const markerMatch = accumulated.match(/\[(?:DIAGRAMA|SUGERENCIAS|SIMULACI[OÓ]N)\]/i);
+  const cutoff = markerMatch?.index !== undefined ? markerMatch.index : accumulated.length;
+
   let visible = accumulated.slice(0, cutoff);
-  // Withhold partial tag prefix like "[", "[D", "[DIAG", "[S", "[SUG"
-  const candidateTags = ['[DIAGRAMA]:', '[DIAGRAMA]', '[SUGERENCIAS]:', '[SUGERENCIAS]'];
+  const lowerVisible = visible.toLowerCase();
+  const candidateTags = [
+    '[diagrama]:',
+    '[diagrama]',
+    '[sugerencias]:',
+    '[sugerencias]',
+    '[simulacion]:',
+    '[simulacion]',
+    '[simulación]:',
+    '[simulación]',
+  ];
+  let trimLen = 0;
   for (const tag of candidateTags) {
-    for (let len = tag.length; len >= 1; len--) {
-      const prefix = tag.slice(0, len);
-      if (visible.endsWith(prefix)) {
-        visible = visible.slice(0, -prefix.length);
+    for (let len = tag.length; len > trimLen; len--) {
+      if (lowerVisible.endsWith(tag.slice(0, len))) {
+        trimLen = len;
         break;
       }
     }
+  }
+  if (trimLen > 0) {
+    visible = visible.slice(0, -trimLen);
   }
   return visible;
 }
@@ -202,7 +224,9 @@ export interface StreamResult {
   text: string;
   diagramPrompt?: string;
   quickChips: string[];
-  simulationType?: 'conductor_gauss' | 'circuito_rc' | 'diodo_iv';
+  simulationType?: SimulationType;
+  simulationParams?: SimulationParams;
+  simulationAdjusted?: SimulationAdjustment[];
 }
 
 /**
@@ -340,8 +364,11 @@ export async function streamNewtonAI(params: {
     throw lastError || new Error('No se pudo obtener respuesta de los modelos de Newton AI.');
   }
 
+  // Parse [SIMULACION] control line first before [DIAGRAMA] and [SUGERENCIAS]
+  const simParsed = parseSimulacion(rawAccumulated);
+  let cleanText = simParsed.cleanText;
+
   // Parse diagram prompt from [DIAGRAMA]: description in english
-  let cleanText = rawAccumulated;
   let diagramPrompt: string | undefined;
   const diagramMatch = cleanText.match(/\[DIAGRAMA\]:\s*([^\n\r]+)/i);
   if (diagramMatch) {
@@ -358,15 +385,21 @@ export async function streamNewtonAI(params: {
     cleanText = cleanText.replace(/\[SUGERENCIAS\]:\s*[^\n\r]+/i, '').trim();
   }
 
-  // Detect relevant interactive simulation
-  let simulationType: 'conductor_gauss' | 'circuito_rc' | 'diodo_iv' | undefined;
-  const lower = (params.prompt + ' ' + cleanText).toLowerCase();
-  if (lower.includes('conductor') && (lower.includes('gauss') || lower.includes('equilibrio') || lower.includes('esfera'))) {
-    simulationType = 'conductor_gauss';
-  } else if (lower.includes('circuito rc') || lower.includes('tau = rc') || lower.includes('carga y descarga')) {
-    simulationType = 'circuito_rc';
-  } else if (lower.includes('diodo') || lower.includes('shockley') || lower.includes('rectificador') || lower.includes('curva i-v') || lower.includes('zener')) {
-    simulationType = 'diodo_iv';
+  // Detect relevant interactive simulation (marker takes precedence over keyword fallback)
+  let simulationType: SimulationType | undefined = simParsed.type;
+  if (!simulationType) {
+    const lower = (params.prompt + ' ' + cleanText).toLowerCase();
+    if (lower.includes('conductor') && (lower.includes('gauss') || lower.includes('equilibrio') || lower.includes('esfera'))) {
+      simulationType = 'conductor_gauss';
+    } else if (lower.includes('circuito rc') || lower.includes('tau = rc') || lower.includes('carga y descarga')) {
+      simulationType = 'circuito_rc';
+    } else if (lower.includes('diodo') || lower.includes('shockley') || lower.includes('rectificador') || lower.includes('curva i-v') || lower.includes('zener')) {
+      simulationType = 'diodo_iv';
+    } else if (lower.includes('ley de coulomb')) {
+      simulationType = 'coulomb';
+    } else if (lower.includes('ley de ohm')) {
+      simulationType = 'ohm';
+    }
   }
 
   // Default quick chips if none detected
@@ -377,17 +410,28 @@ export async function streamNewtonAI(params: {
       quickChips = ['¿Cómo calculo la constante tau?', 'Graficar voltaje del condensador', 'Dame un ejercicio de examen'];
     } else if (simulationType === 'diodo_iv') {
       quickChips = ['Explícame la curva I-V', '¿Cómo opera el diodo Zener?', 'Cálculo de voltaje rizado'];
+    } else if (simulationType === 'coulomb') {
+      quickChips = ['Duplica la distancia: ¿qué pasa con F?', 'Cambia q2 a negativo', 'Dame un ejercicio de examen'];
+    } else if (simulationType === 'ohm') {
+      quickChips = ['Duplica la resistencia: ¿qué pasa con I?', 'Calcula la potencia disipada', 'Dame un ejercicio de examen'];
     } else {
       quickChips = ['Dame un ejemplo paso a paso', '¿Qué fórmula se aplica?', 'Ver constantes físicas'];
     }
   }
 
-  return {
+  const result: StreamResult = {
     text: cleanText,
     diagramPrompt,
     quickChips,
     simulationType,
   };
+  if (simParsed.params !== undefined) {
+    result.simulationParams = simParsed.params;
+  }
+  if (simParsed.adjusted.length > 0) {
+    result.simulationAdjusted = simParsed.adjusted;
+  }
+  return result;
 }
 
 export async function askNewtonAI(params: {
@@ -468,8 +512,11 @@ export async function askNewtonVision(params: {
     throw lastError || new Error('No se pudo procesar la imagen con los modelos de visión de Newton AI.');
   }
 
+  // Parse [SIMULACION] control line first before [DIAGRAMA] and [SUGERENCIAS]
+  const simParsed = parseSimulacion(rawResponseText);
+  let cleanText = simParsed.cleanText;
+
   // Parse diagram prompt from [DIAGRAMA]: description in english
-  let cleanText = rawResponseText;
   let diagramPrompt: string | undefined;
   const diagramMatch = cleanText.match(/\[DIAGRAMA\]:\s*([^\n\r]+)/i);
   if (diagramMatch) {
@@ -486,14 +533,20 @@ export async function askNewtonVision(params: {
     cleanText = cleanText.replace(/\[SUGERENCIAS\]:\s*[^\n\r]+/i, '').trim();
   }
 
-  let simulationType: 'conductor_gauss' | 'circuito_rc' | 'diodo_iv' | undefined;
-  const lower = (userPrompt + ' ' + cleanText).toLowerCase();
-  if (lower.includes('conductor') && (lower.includes('gauss') || lower.includes('equilibrio') || lower.includes('esfera'))) {
-    simulationType = 'conductor_gauss';
-  } else if (lower.includes('circuito rc') || lower.includes('tau = rc') || lower.includes('carga y descarga')) {
-    simulationType = 'circuito_rc';
-  } else if (lower.includes('diodo') || lower.includes('shockley') || lower.includes('rectificador') || lower.includes('curva i-v') || lower.includes('zener')) {
-    simulationType = 'diodo_iv';
+  let simulationType: SimulationType | undefined = simParsed.type;
+  if (!simulationType) {
+    const lower = (userPrompt + ' ' + cleanText).toLowerCase();
+    if (lower.includes('conductor') && (lower.includes('gauss') || lower.includes('equilibrio') || lower.includes('esfera'))) {
+      simulationType = 'conductor_gauss';
+    } else if (lower.includes('circuito rc') || lower.includes('tau = rc') || lower.includes('carga y descarga')) {
+      simulationType = 'circuito_rc';
+    } else if (lower.includes('diodo') || lower.includes('shockley') || lower.includes('rectificador') || lower.includes('curva i-v') || lower.includes('zener')) {
+      simulationType = 'diodo_iv';
+    } else if (lower.includes('ley de coulomb')) {
+      simulationType = 'coulomb';
+    } else if (lower.includes('ley de ohm')) {
+      simulationType = 'ohm';
+    }
   }
 
   if (quickChips.length === 0) {
@@ -503,17 +556,28 @@ export async function askNewtonVision(params: {
       quickChips = ['Explícame el caso r < R', 'Ver simulación interactiva', 'Calcular densidad superficial'];
     } else if (simulationType === 'diodo_iv') {
       quickChips = ['Calcular punto de operación Q', '¿Cuál es el voltaje rizado?', 'Ver curva I-V'];
+    } else if (simulationType === 'coulomb') {
+      quickChips = ['Duplica la distancia: ¿qué pasa con F?', 'Cambia q2 a negativo', 'Dame un ejercicio de examen'];
+    } else if (simulationType === 'ohm') {
+      quickChips = ['Duplica la resistencia: ¿qué pasa con I?', 'Calcula la potencia disipada', 'Dame un ejercicio de examen'];
     } else {
       quickChips = ['Calcular con otros valores', 'Explicar las leyes aplicadas', 'Ver constante física'];
     }
   }
 
-  return {
+  const result: StreamResult = {
     text: cleanText,
     diagramPrompt,
     quickChips,
     simulationType,
   };
+  if (simParsed.params !== undefined) {
+    result.simulationParams = simParsed.params;
+  }
+  if (simParsed.adjusted.length > 0) {
+    result.simulationAdjusted = simParsed.adjusted;
+  }
+  return result;
 }
 
 export async function transcribeNewtonAudio(params: {
@@ -576,6 +640,15 @@ export async function transcribeNewtonAudio(params: {
   return { text: transcribedText };
 }
 
+export class DiagramApiError extends Error {
+  statusCode: number;
+  constructor(message: string, statusCode = 500) {
+    super(message);
+    this.name = 'DiagramApiError';
+    this.statusCode = statusCode;
+  }
+}
+
 export async function generateNewtonDiagram(params: {
   prompt: string;
 }): Promise<{ imageUrl: string }> {
@@ -585,64 +658,84 @@ export async function generateNewtonDiagram(params: {
 
   const enhancedPrompt = `Scientific physics educational diagram: ${cleanPrompt}. High quality educational textbook schematic, clean white background, high contrast, clear technical lines, accurate electrical and physical symbols, clearly labeled components, arrow directions and polarities marked (+ and -).`;
 
-  // First try official Imagen 3 model 'imagen-3.0-generate-002' via generateImages
-  const imagenTimer = '[Newton Diagram] generateImages (imagen-3.0-generate-002)';
-  console.time(imagenTimer);
-  try {
-    const response = await ai.models.generateImages({
-      model: 'imagen-3.0-generate-002',
-      prompt: enhancedPrompt,
-      config: {
-        numberOfImages: 1,
-        outputMimeType: 'image/jpeg',
-        aspectRatio: '4:3',
-      },
-    });
-    console.timeEnd(imagenTimer);
+  const maxAttempts = 2;
+  let lastError: any = null;
 
-    const imgBytes = response.generatedImages?.[0]?.image?.imageBytes;
-    if (imgBytes) {
-      console.timeEnd('[Newton Diagram] Total Generation');
-      return {
-        imageUrl: `data:image/jpeg;base64,${imgBytes}`,
-      };
-    }
-  } catch (err: any) {
-    console.timeEnd(imagenTimer);
-    console.warn('[Newton Diagram] Imagen generateImages failed, trying gemini-3.1-flash-lite-image fallback:', err?.message || err);
-  }
-
-  // Fallback to official Gemini Image model 'gemini-3.1-flash-lite-image'
-  const fallbackTimer = '[Newton Diagram] generateContent (gemini-3.1-flash-lite-image)';
-  console.time(fallbackTimer);
-  try {
-    const fallbackResponse = await ai.models.generateContent({
-      model: 'gemini-3.1-flash-lite-image',
-      contents: {
-        parts: [{ text: enhancedPrompt }],
-      },
-      config: {
-        imageConfig: {
-          aspectRatio: '4:3',
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const modelTimer = `[Newton Diagram] generateContent (gemini-3.1-flash-lite-image, attempt ${attempt})`;
+    console.time(modelTimer);
+    try {
+      const response = await ai.models.generateContent({
+        model: 'gemini-3.1-flash-lite-image',
+        contents: {
+          parts: [{ text: enhancedPrompt }],
         },
-      },
-    });
-    console.timeEnd(fallbackTimer);
+        config: {
+          imageConfig: {
+            aspectRatio: '4:3',
+          },
+        },
+      });
+      console.timeEnd(modelTimer);
 
-    for (const part of fallbackResponse.candidates?.[0]?.content?.parts ?? []) {
-      if (part.inlineData?.data) {
-        const mime = part.inlineData.mimeType || 'image/png';
-        console.timeEnd('[Newton Diagram] Total Generation');
-        return {
-          imageUrl: `data:${mime};base64,${part.inlineData.data}`,
-        };
+      for (const part of response.candidates?.[0]?.content?.parts ?? []) {
+        if (part.inlineData?.data) {
+          const mime = part.inlineData.mimeType || 'image/png';
+          console.timeEnd('[Newton Diagram] Total Generation');
+          return {
+            imageUrl: `data:${mime};base64,${part.inlineData.data}`,
+          };
+        }
       }
+
+      lastError = new DiagramApiError(
+        'El modelo no devolvió una imagen para el diagrama técnico.',
+        502
+      );
+    } catch (err: any) {
+      console.timeEnd(modelTimer);
+      lastError = err;
+
+      const status = extractHttpStatus(err);
+      const errMsg = String(err?.message || '');
+
+      if (status === 429 || errMsg.includes('RESOURCE_EXHAUSTED') || errMsg.toLowerCase().includes('quota')) {
+        console.warn('[Newton Diagram] Quota exhausted / paid key required for gemini-3.1-flash-lite-image (429).');
+        console.timeEnd('[Newton Diagram] Total Generation');
+        throw new DiagramApiError(
+          'La generación de diagramas requiere una clave API con facturación activa o superó su cuota actual (Settings > Secrets). Puedes continuar con el análisis analítico.',
+          429
+        );
+      }
+
+      if (status === 403 || status === 400 || errMsg.includes('PERMISSION_DENIED') || errMsg.includes('API_KEY_INVALID')) {
+        console.warn(`[Newton Diagram] API key/permission error (${status || 'N/A'}):`, errMsg);
+        console.timeEnd('[Newton Diagram] Total Generation');
+        throw new DiagramApiError(
+          'No se pudo autorizar la generación de diagramas. Verifica tu clave API en Settings > Secrets.',
+          status === 403 ? 403 : 400
+        );
+      }
+
+      const isTransient = status === 500 || status === 502 || status === 503 || status === 504;
+      if (isTransient && attempt < maxAttempts) {
+        console.warn(`[Newton Diagram] Transient error (${status}), retrying...`);
+        await new Promise((r) => setTimeout(r, 800));
+        continue;
+      }
+
+      console.error('[Newton Diagram] Diagram generation failed:', err);
+      break;
     }
-  } catch (fallbackErr: any) {
-    console.timeEnd(fallbackTimer);
-    console.error('[Newton Diagram] Both Imagen and Gemini image fallback failed:', fallbackErr);
   }
 
   console.timeEnd('[Newton Diagram] Total Generation');
-  throw new Error('No se pudo generar el diagrama técnico educativo.');
+  if (lastError instanceof DiagramApiError) {
+    throw lastError;
+  }
+  const fallbackStatus = extractHttpStatus(lastError) || 500;
+  throw new DiagramApiError(
+    'No se pudo generar el diagrama técnico educativo.',
+    fallbackStatus
+  );
 }

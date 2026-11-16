@@ -2,7 +2,9 @@ import React, { useState } from 'react';
 import { SphericalConductorSim } from './simulators/SphericalConductorSim';
 import { RcCircuitSim } from './simulators/RcCircuitSim';
 import { DiodeIvSim } from './simulators/DiodeIvSim';
-import { Zap, Activity, Cpu, Sparkles } from 'lucide-react';
+import { CoulombSim } from './simulators/CoulombSim';
+import { OhmSim } from './simulators/OhmSim';
+import { Zap, Activity, Cpu, Sparkles, Magnet, Gauge } from 'lucide-react';
 
 interface SimulatorsViewProps {
   initialSimulator?: string;
@@ -13,7 +15,7 @@ export const SimulatorsView: React.FC<SimulatorsViewProps> = ({
   initialSimulator = 'conductor_gauss',
   onAskNewton,
 }) => {
-  const [activeSim, setActiveSim] = useState<'conductor_gauss' | 'circuito_rc' | 'diodo_iv'>(
+  const [activeSim, setActiveSim] = useState<'conductor_gauss' | 'circuito_rc' | 'diodo_iv' | 'coulomb' | 'ohm'>(
     (initialSimulator as any) || 'conductor_gauss'
   );
 
@@ -73,6 +75,30 @@ export const SimulatorsView: React.FC<SimulatorsViewProps> = ({
         >
           <Cpu className="w-4 h-4 text-[#FA8989]" />
           <span>3. Diodo Shockley & Rectificación</span>
+        </button>
+
+        <button
+          onClick={() => setActiveSim('coulomb')}
+          className={`px-4 py-2 rounded-2xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
+            activeSim === 'coulomb'
+              ? 'bg-[#546C37] dark:bg-[#6E8F47] text-white shadow-sm'
+              : 'bg-[#D6E3B1]/60 dark:bg-[#24402B]/60 text-[#546C37] dark:text-[#CFE3A8] hover:bg-[#D6E3B1] dark:hover:bg-[#24402B]'
+          }`}
+        >
+          <Magnet className="w-4 h-4 text-[#FA8989]" />
+          <span>4. Ley de Coulomb</span>
+        </button>
+
+        <button
+          onClick={() => setActiveSim('ohm')}
+          className={`px-4 py-2 rounded-2xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
+            activeSim === 'ohm'
+              ? 'bg-[#546C37] dark:bg-[#6E8F47] text-white shadow-sm'
+              : 'bg-[#D6E3B1]/60 dark:bg-[#24402B]/60 text-[#546C37] dark:text-[#CFE3A8] hover:bg-[#D6E3B1] dark:hover:bg-[#24402B]'
+          }`}
+        >
+          <Gauge className="w-4 h-4 text-[#FA8989]" />
+          <span>5. Ley de Ohm</span>
         </button>
       </div>
 
@@ -136,6 +162,48 @@ export const SimulatorsView: React.FC<SimulatorsViewProps> = ({
               >
                 <Sparkles className="w-3.5 h-3.5" />
                 Consultar el cálculo del capacitor de filtrado con Newton
+              </button>
+            </div>
+          </div>
+        )}
+
+        {activeSim === 'coulomb' && (
+          <div className="space-y-4">
+            <CoulombSim />
+            <div className="bg-[#FFFBD9] dark:bg-[#0F1A0F] rounded-2xl p-4 text-xs text-[#546C37] dark:text-[#CFE3A8] border border-[#ADCA88]/40 dark:border-[#3C5A40]/40 space-y-1">
+              <h4 className="font-bold text-sm text-[#941C2F] dark:text-[#FF9FAE] font-['Pixelify_Sans']">
+                Fundamento Físico: Ley de Coulomb
+              </h4>
+              <p>
+                La fuerza electrostática entre dos cargas puntuales en el vacío es directamente proporcional al producto de las magnitudes de las cargas e inversamente proporcional al cuadrado de la distancia que las separa: F = k·|q₁·q₂| / r², con k = 8.988 × 10⁹ N·m²/C². Cargas del mismo signo se repelen y cargas de signos opuestos se atraen siguiendo un par acción-reacción de igual magnitud.
+              </p>
+              <button
+                onClick={() => onAskNewton('Resuelve paso a paso la fuerza eléctrica entre dos cargas puntuales q1 = 2 µC y q2 = -3 µC separadas 0.5 m en el vacío, indicando si es atractiva o repulsiva.')}
+                className="mt-2 text-xs font-bold text-[#941C2F] dark:text-[#FF9FAE] hover:underline flex items-center gap-1 cursor-pointer"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                Resolver un ejercicio numérico de examen sobre Ley de Coulomb
+              </button>
+            </div>
+          </div>
+        )}
+
+        {activeSim === 'ohm' && (
+          <div className="space-y-4">
+            <OhmSim />
+            <div className="bg-[#FFFBD9] dark:bg-[#0F1A0F] rounded-2xl p-4 text-xs text-[#546C37] dark:text-[#CFE3A8] border border-[#ADCA88]/40 dark:border-[#3C5A40]/40 space-y-1">
+              <h4 className="font-bold text-sm text-[#941C2F] dark:text-[#FF9FAE] font-['Pixelify_Sans']">
+                Fundamento Físico: Ley de Ohm
+              </h4>
+              <p>
+                En un conductor óhmico a temperatura constante, la diferencia de potencial V es directamente proporcional a la intensidad de corriente I que circula por él: V = I · R, donde R es la resistencia eléctrica en ohmios (Ω). La potencia eléctrica disipada por efecto Joule viene dada por P = V · I = I² · R = V² / R en vatios (W).
+              </p>
+              <button
+                onClick={() => onAskNewton('Resuelve paso a paso un circuito con una batería de 6 V conectada a una resistencia de 50 Ω, calculando la corriente eléctrica I y la potencia disipada P.')}
+                className="mt-2 text-xs font-bold text-[#941C2F] dark:text-[#FF9FAE] hover:underline flex items-center gap-1 cursor-pointer"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                Resolver un ejercicio numérico de examen sobre Ley de Ohm
               </button>
             </div>
           </div>

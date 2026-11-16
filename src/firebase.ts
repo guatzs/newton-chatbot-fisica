@@ -5,11 +5,17 @@ import {
   doc, 
   setDoc, 
   getDocs, 
-  query, 
-  orderBy, 
+  query,
+  orderBy,
   writeBatch,
   serverTimestamp 
 } from 'firebase/firestore';
+import {
+  getStorage,
+  ref,
+  uploadString,
+  getDownloadURL,
+} from 'firebase/storage';
 import { 
   getAuth, 
   GoogleAuthProvider, 
@@ -29,6 +35,7 @@ import {
 } from 'firebase/auth';
 import firebaseConfig from '../firebase-applet-config.json';
 import { ChatMessage, ChatSession } from './types';
+import { mergeAndSortMessages, upsertMessageInList } from './utils/messageHistory';
 
 // Clean up legacy fallback UID from previous anonymous versions if present
 try {
@@ -40,6 +47,7 @@ try {
 // Initialize Firebase
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId || '(default)');
+export const storage = getStorage(app);
 export const auth = getAuth(app);
 auth.languageCode = 'es';
 
@@ -269,6 +277,40 @@ function getLocalMessagesKey(uid: string, sessionId: string): string {
   return `newton_messages_v2_${uid}_${sessionId}`;
 }
 
+function stripUndefinedFields<T extends Record<string, any>>(obj: T): T {
+  const clean: Record<string, any> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (v !== undefined) {
+      clean[k] = v;
+    }
+  }
+  return clean as T;
+}
+
+/**
+ * Uploads a base64 data URL image to Firebase Storage under users/{uid}/sessions/{sessionId}/{messageId}.jpg.
+ * Returns download URL, or null in guest mode or if upload fails.
+ */
+export async function uploadSessionImage(
+  sessionId: string,
+  messageId: string,
+  dataUrl: string
+): Promise<string | null> {
+  const user = auth.currentUser;
+  if (!user) return null;
+  if (!dataUrl || !dataUrl.startsWith('data:image')) return dataUrl || null;
+
+  try {
+    const storagePath = `users/${user.uid}/sessions/${sessionId}/${messageId}.jpg`;
+    const fileRef = ref(storage, storagePath);
+    await uploadString(fileRef, dataUrl, 'data_url');
+    return await getDownloadURL(fileRef);
+  } catch (err) {
+    console.warn('Firebase Storage upload error:', err);
+    return null;
+  }
+}
+
 /**
  * Saves session metadata to storage.
  * In guest mode (auth.currentUser == null), returns immediately without saving.
@@ -278,10 +320,10 @@ export async function saveSessionToStorage(session: ChatSession): Promise<void> 
   if (!user) return;
   const uid = user.uid;
 
-  const sessionWithUser: ChatSession = {
+  const sessionWithUser: ChatSession = stripUndefinedFields({
     ...session,
     userId: uid,
-  };
+  });
 
   // Local storage cache scoped to this user
   try {
@@ -352,6 +394,8 @@ export async function fetchAllSessions(): Promise<ChatSession[]> {
 
 /**
  * Saves a message to storage.
+ * Uploads data:image attachments to Firebase Storage and stores only download URLs.
+ * Never writes base64 payloads or undefined fields to Firestore.
  * In guest mode, returns immediately without saving.
  */
 export async function saveMessageToStorage(sessionId: string, message: ChatMessage): Promise<void> {
@@ -360,22 +404,37 @@ export async function saveMessageToStorage(sessionId: string, message: ChatMessa
   const uid = user.uid;
 
   const storageMessage: ChatMessage = { ...message };
-  if (storageMessage.imageUrl && storageMessage.imageUrl.startsWith('data:image')) {
-    delete storageMessage.imageUrl;
-    storageMessage.imageNote = 'Imagen adjunta: ejercicio escaneado';
-  }
-  if (storageMessage.diagramUrl && storageMessage.diagramUrl.startsWith('data:image')) {
-    delete storageMessage.diagramUrl;
-  }
   delete storageMessage.diagramLoading;
 
-  // Local storage cache scoped to this user and session
+  if (storageMessage.imageUrl && storageMessage.imageUrl.startsWith('data:image')) {
+    const uploadedUrl = await uploadSessionImage(sessionId, message.id, storageMessage.imageUrl);
+    if (uploadedUrl) {
+      storageMessage.imageUrl = uploadedUrl;
+    } else {
+      delete storageMessage.imageUrl;
+      storageMessage.imageNote = 'Imagen adjunta: ejercicio escaneado';
+    }
+  }
+
+  if (storageMessage.diagramUrl && storageMessage.diagramUrl.startsWith('data:image')) {
+    const uploadedUrl = await uploadSessionImage(sessionId, message.id, storageMessage.diagramUrl);
+    if (uploadedUrl) {
+      storageMessage.diagramUrl = uploadedUrl;
+      delete storageMessage.diagramError;
+    } else {
+      delete storageMessage.diagramUrl;
+    }
+  }
+
+  const cleanMessage = stripUndefinedFields(storageMessage);
+
+  // Local storage cache scoped to this user and session (replace by id, never duplicate)
   try {
     const key = getLocalMessagesKey(uid, sessionId);
     const raw = localStorage.getItem(key);
     const list: ChatMessage[] = raw ? JSON.parse(raw) : [];
-    list.push(storageMessage);
-    localStorage.setItem(key, JSON.stringify(list));
+    const updatedList = upsertMessageInList(list, cleanMessage);
+    localStorage.setItem(key, JSON.stringify(updatedList));
   } catch (e) {
     console.warn('Local storage write error:', e);
   }
@@ -384,7 +443,7 @@ export async function saveMessageToStorage(sessionId: string, message: ChatMessa
   try {
     const msgRef = doc(db, 'users', uid, 'sessions', sessionId, 'messages', message.id);
     await setDoc(msgRef, {
-      ...storageMessage,
+      ...cleanMessage,
       firestoreSyncedAt: serverTimestamp(),
     });
   } catch (err) {
@@ -393,7 +452,9 @@ export async function saveMessageToStorage(sessionId: string, message: ChatMessa
 }
 
 /**
- * Fetches messages for a session.
+ * Fetches messages for a session by merging localStorage and Firestore by id,
+ * preferring the most complete version and ordering chronologically by createdAt
+ * (preserving legacy messages without createdAt in appearance order before dated ones).
  * In guest mode, returns an empty array immediately.
  */
 export async function fetchMessagesForSession(sessionId: string): Promise<ChatMessage[]> {
@@ -401,36 +462,33 @@ export async function fetchMessagesForSession(sessionId: string): Promise<ChatMe
   if (!user) return [];
   const uid = user.uid;
 
+  let localMessages: ChatMessage[] = [];
   try {
-    const q = query(
-      collection(db, 'users', uid, 'sessions', sessionId, 'messages'),
-      orderBy('timestamp', 'asc')
-    );
-    const snap = await getDocs(q);
-    if (!snap.empty) {
-      const results: ChatMessage[] = [];
-      snap.forEach(d => {
-        results.push(d.data() as ChatMessage);
-      });
-      try {
-        localStorage.setItem(getLocalMessagesKey(uid, sessionId), JSON.stringify(results));
-      } catch {}
-      return results;
-    }
-
     const raw = localStorage.getItem(getLocalMessagesKey(uid, sessionId));
-    if (raw) return JSON.parse(raw);
-    return [];
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) localMessages = parsed;
+    }
+  } catch (e) {
+    console.warn('Local storage read error:', e);
+  }
+
+  let remoteMessages: ChatMessage[] = [];
+  try {
+    const snap = await getDocs(collection(db, 'users', uid, 'sessions', sessionId, 'messages'));
+    snap.forEach((d) => {
+      remoteMessages.push(d.data() as ChatMessage);
+    });
   } catch (err) {
     console.warn('Firestore fetch messages error:', err);
-    try {
-      const raw = localStorage.getItem(getLocalMessagesKey(uid, sessionId));
-      if (raw) return JSON.parse(raw);
-    } catch (e) {
-      console.warn('Local storage read error:', e);
-    }
-    return [];
   }
+
+  const merged = mergeAndSortMessages(localMessages, remoteMessages);
+  try {
+    localStorage.setItem(getLocalMessagesKey(uid, sessionId), JSON.stringify(merged));
+  } catch {}
+
+  return merged;
 }
 
 /**

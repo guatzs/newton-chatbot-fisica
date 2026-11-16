@@ -13,11 +13,13 @@ import { VerifyEmailScreen } from './components/VerifyEmailScreen';
 import { ConfirmGuestSignInModal } from './components/ConfirmGuestSignInModal';
 import { ChatSession, ChatMessage, CourseModuleId } from './types';
 import { 
+  auth,
   fetchAllSessions, 
   saveSessionToStorage, 
   fetchMessagesForSession, 
   saveMessageToStorage, 
   deleteSessionFromStorage,
+  uploadSessionImage,
   signInWithGoogle,
   signOutUser,
   subscribeToAuth,
@@ -50,9 +52,27 @@ export default function App() {
   const [currentSessionId, setCurrentSessionId] = useState<string>('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [loadingMessages, setLoadingMessages] = useState<boolean>(false);
   const [isScannerOpen, setIsScannerOpen] = useState<boolean>(false);
   const [isVoiceOpen, setIsVoiceOpen] = useState<boolean>(false);
   const [selectedSimulator, setSelectedSimulator] = useState<string>('conductor_gauss');
+
+  const selectRequestIdRef = useRef<number>(0);
+  const currentSessionIdRef = useRef<string>('');
+  const messagesRef = useRef<ChatMessage[]>([]);
+  const sessionsRef = useRef<ChatSession[]>([]);
+
+  useEffect(() => {
+    currentSessionIdRef.current = currentSessionId;
+  }, [currentSessionId]);
+
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
+  useEffect(() => {
+    sessionsRef.current = sessions;
+  }, [sessions]);
 
   // Firebase auth state subscription & redirect check
   useEffect(() => {
@@ -115,22 +135,42 @@ export default function App() {
     let isMounted = true;
 
     async function loadInitial() {
+      const reqId = ++selectRequestIdRef.current;
       try {
         const storedSessions = await fetchAllSessions();
-        if (!isMounted) return;
+        if (!isMounted || selectRequestIdRef.current !== reqId) return;
         if (storedSessions.length > 0) {
+          sessionsRef.current = storedSessions;
           setSessions(storedSessions);
           const latest = storedSessions[0];
+          currentSessionIdRef.current = latest.id;
           setCurrentSessionId(latest.id);
+          setLoadingMessages(true);
           const msgs = await fetchMessagesForSession(latest.id);
-          if (isMounted) setMessages(msgs);
+          if (isMounted && selectRequestIdRef.current === reqId) {
+            messagesRef.current = msgs;
+            setMessages(msgs);
+            if (latest.messageCount !== msgs.length) {
+              const synced = { ...latest, messageCount: msgs.length };
+              sessionsRef.current = sessionsRef.current.map((s) => (s.id === latest.id ? synced : s));
+              setSessions(sessionsRef.current);
+              saveSessionToStorage(synced).catch(() => {});
+            }
+          }
         } else {
+          sessionsRef.current = [];
           setSessions([]);
+          currentSessionIdRef.current = '';
           setCurrentSessionId('');
+          messagesRef.current = [];
           setMessages([]);
         }
       } catch (err) {
         console.warn('Error loading initial user sessions:', err);
+      } finally {
+        if (isMounted && selectRequestIdRef.current === reqId) {
+          setLoadingMessages(false);
+        }
       }
     }
 
@@ -164,6 +204,9 @@ export default function App() {
     setTimeout(() => {
       guestBackupRef.current = null;
       setHasGuestBackup(false);
+      sessionsRef.current = [];
+      messagesRef.current = [];
+      currentSessionIdRef.current = '';
       setSessions([]);
       setMessages([]);
       setCurrentSessionId('');
@@ -198,6 +241,9 @@ export default function App() {
   const handleBackToGuest = () => {
     const backup = guestBackupRef.current;
     if (backup) {
+      sessionsRef.current = backup.sessions;
+      messagesRef.current = backup.messages;
+      currentSessionIdRef.current = backup.currentSessionId;
       setSessions(backup.sessions);
       setMessages(backup.messages);
       setCurrentSessionId(backup.currentSessionId);
@@ -221,6 +267,9 @@ export default function App() {
     }
     guestBackupRef.current = null;
     setHasGuestBackup(false);
+    sessionsRef.current = [];
+    messagesRef.current = [];
+    currentSessionIdRef.current = '';
     setSessions([]);
     setMessages([]);
     setCurrentSessionId('');
@@ -229,10 +278,42 @@ export default function App() {
   };
 
   const handleSelectSession = async (sessionId: string) => {
+    const reqId = ++selectRequestIdRef.current;
+    currentSessionIdRef.current = sessionId;
     setCurrentSessionId(sessionId);
-    const msgs = await fetchMessagesForSession(sessionId);
-    setMessages(msgs);
     setActiveTab('chat');
+    setLoadingMessages(true);
+    messagesRef.current = [];
+    setMessages([]);
+
+    try {
+      const msgs = await fetchMessagesForSession(sessionId);
+      if (selectRequestIdRef.current !== reqId) return;
+
+      messagesRef.current = msgs;
+      setMessages(msgs);
+
+      const targetSession = sessionsRef.current.find((s) => s.id === sessionId);
+      if (targetSession) {
+        const updatedSession: ChatSession = {
+          ...targetSession,
+          messageCount: msgs.length,
+        };
+        sessionsRef.current = sessionsRef.current.map((s) =>
+          s.id === sessionId ? updatedSession : s
+        );
+        setSessions(sessionsRef.current);
+        if (targetSession.messageCount !== msgs.length) {
+          saveSessionToStorage(updatedSession).catch(() => {});
+        }
+      }
+    } catch (err) {
+      console.warn('Error loading session messages:', err);
+    } finally {
+      if (selectRequestIdRef.current === reqId) {
+        setLoadingMessages(false);
+      }
+    }
   };
 
   const handleCreateNewSession = (title: string, moduleId: CourseModuleId = 'electrostatica'): string => {
@@ -249,8 +330,11 @@ export default function App() {
     };
     // Non-blocking background save to storage (offline-tolerant)
     saveSessionToStorage(newSession).catch(() => {});
-    setSessions((prev) => [newSession, ...prev]);
+    sessionsRef.current = [newSession, ...sessionsRef.current];
+    setSessions(sessionsRef.current);
+    currentSessionIdRef.current = newId;
     setCurrentSessionId(newId);
+    messagesRef.current = [];
     setMessages([]);
     return newId;
   };
@@ -262,16 +346,21 @@ export default function App() {
     initialMessages?: ChatMessage[],
     isVision = false
   ) => {
+    if (!explicitSessionId && loadingMessages) {
+      return;
+    }
+
     const timerId = `[Chat UI] handleSendMessage_${Date.now()}`;
     console.time(timerId);
     setIsLoading(true);
 
-    let targetSessionId = explicitSessionId || currentSessionId;
+    let targetSessionId = explicitSessionId || currentSessionIdRef.current || currentSessionId;
     if (!targetSessionId) {
       targetSessionId = handleCreateNewSession(text.slice(0, 35) + '...');
     }
 
     const timeString = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const userCreatedAt = new Date().toISOString();
     const userMsg: ChatMessage = {
       id: `usr-${Date.now()}`,
       sessionId: targetSessionId,
@@ -279,18 +368,21 @@ export default function App() {
       text,
       imageUrl: imageBase64,
       timestamp: timeString,
+      createdAt: userCreatedAt,
     };
 
-    // Determine base messages for history and state (clean any previous error messages)
-    const baseMessages = (initialMessages !== undefined ? initialMessages : messages).filter((m) => !m.isError);
+    // Determine base messages for THIS session only (clean any previous error messages)
+    const sourceMessages = initialMessages !== undefined ? initialMessages : messagesRef.current;
+    const baseMessages = sourceMessages.filter(
+      (m) => !m.isError && m.sessionId === targetSessionId
+    );
 
     // Update UI immediately with user message
-    setMessages((prev) => {
-      const base = (initialMessages !== undefined ? initialMessages : prev).filter((m) => !m.isError);
-      return [...base, userMsg];
-    });
+    const updatedWithUser = [...baseMessages, userMsg];
+    messagesRef.current = updatedWithUser;
+    setMessages(updatedWithUser);
 
-    // Non-blocking background save for user message
+    // Non-blocking background save for user message (uploads image if present)
     saveMessageToStorage(targetSessionId, userMsg).catch(() => {});
 
     const isVisionRequest = isVision || Boolean(imageBase64);
@@ -315,6 +407,9 @@ export default function App() {
 
         const data = await res.json();
         const botTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const botCreatedAt = new Date(
+          Math.max(Date.now(), Date.parse(userCreatedAt) + 1)
+        ).toISOString();
 
         const botMsg: ChatMessage = {
           id: `bot-${Date.now()}`,
@@ -322,26 +417,33 @@ export default function App() {
           sender: 'bot',
           text: data.text,
           quickChips: data.quickChips || [],
-          simulationType: data.simulationType,
+          ...(data.simulationType !== undefined ? { simulationType: data.simulationType } : {}),
+          ...(data.simulationParams !== undefined ? { simulationParams: data.simulationParams } : {}),
+          ...(data.simulationAdjusted !== undefined ? { simulationAdjusted: data.simulationAdjusted } : {}),
           timestamp: botTime,
-          diagramPrompt: data.diagramPrompt,
+          createdAt: botCreatedAt,
+          ...(data.diagramPrompt !== undefined ? { diagramPrompt: data.diagramPrompt } : {}),
           diagramLoading: Boolean(data.diagramPrompt),
         };
 
-        setMessages((prev) => {
-          const clean = prev.filter((m) => !m.isError);
+        let nextMessageCount = baseMessages.length + 2;
+        if (currentSessionIdRef.current === targetSessionId) {
+          const clean = messagesRef.current.filter((m) => !m.isError && m.sessionId === targetSessionId);
           const hasUser = clean.some((m) => m.id === userMsg.id);
-          return hasUser ? [...clean, botMsg] : [...clean, userMsg, botMsg];
-        });
+          const next = hasUser ? [...clean, botMsg] : [...clean, userMsg, botMsg];
+          messagesRef.current = next;
+          setMessages(next);
+          nextMessageCount = next.length;
+        }
 
         saveMessageToStorage(targetSessionId, botMsg).catch(() => {});
 
         // Diagram fetching for vision result if proposed
         if (data.diagramPrompt) {
-          triggerDiagramGeneration(botMsg.id, data.diagramPrompt);
+          triggerDiagramGeneration(botMsg.id, data.diagramPrompt, botMsg);
         }
 
-        persistSessionHeader(targetSessionId, data.text);
+        persistSessionHeader(targetSessionId, data.text, nextMessageCount);
       } else {
         // SSE Streaming chat flow (/api/chat)
         let history = baseMessages.slice(-6).map((m) => ({
@@ -375,6 +477,9 @@ export default function App() {
 
         const botId = `bot-${Date.now()}`;
         const botTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const botCreatedAt = new Date(
+          Math.max(Date.now(), Date.parse(userCreatedAt) + 1)
+        ).toISOString();
 
         const initialBotMsg: ChatMessage = {
           id: botId,
@@ -383,6 +488,7 @@ export default function App() {
           text: '',
           quickChips: [],
           timestamp: botTime,
+          createdAt: botCreatedAt,
         };
 
         const reader = res.body?.getReader();
@@ -402,15 +508,16 @@ export default function App() {
           updateScheduled = true;
           rafId = requestAnimationFrame(() => {
             updateScheduled = false;
-            setMessages((prev) => {
-              const clean = prev.filter((m) => !m.isError);
-              const exists = clean.some((m) => m.id === botId);
-              if (exists) {
-                return clean.map((m) => (m.id === botId ? { ...m, text: currentText } : m));
-              } else {
-                return [...clean, { ...initialBotMsg, text: currentText }];
-              }
-            });
+            if (currentSessionIdRef.current !== targetSessionId) return;
+            const clean = messagesRef.current.filter(
+              (m) => !m.isError && m.sessionId === targetSessionId
+            );
+            const exists = clean.some((m) => m.id === botId);
+            const next = exists
+              ? clean.map((m) => (m.id === botId ? { ...m, text: currentText } : m))
+              : [...clean, { ...initialBotMsg, text: currentText }];
+            messagesRef.current = next;
+            setMessages(next);
           });
         };
 
@@ -445,31 +552,41 @@ export default function App() {
                   sender: 'bot',
                   text: finalCleanText,
                   quickChips: eventData.quickChips || [],
-                  simulationType: eventData.simulationType,
+                  ...(eventData.simulationType !== undefined ? { simulationType: eventData.simulationType } : {}),
+                  ...(eventData.simulationParams !== undefined ? { simulationParams: eventData.simulationParams } : {}),
+                  ...(eventData.simulationAdjusted !== undefined ? { simulationAdjusted: eventData.simulationAdjusted } : {}),
                   timestamp: botTime,
-                  diagramPrompt: eventData.diagramPrompt,
+                  createdAt: botCreatedAt,
+                  ...(eventData.diagramPrompt !== undefined ? { diagramPrompt: eventData.diagramPrompt } : {}),
                   diagramLoading: Boolean(eventData.diagramPrompt),
                 };
 
-                setMessages((prev) => {
-                  const clean = prev.filter((m) => !m.isError);
+                let nextMessageCount = baseMessages.length + 2;
+                if (currentSessionIdRef.current === targetSessionId) {
+                  const clean = messagesRef.current.filter(
+                    (m) => !m.isError && m.sessionId === targetSessionId
+                  );
+                  const hasUser = clean.some((m) => m.id === userMsg.id);
                   const exists = clean.some((m) => m.id === botId);
-                  if (exists) {
-                    return clean.map((m) => (m.id === botId ? finalBotMsg : m));
-                  } else {
-                    return [...clean, finalBotMsg];
-                  }
-                });
+                  const next = exists
+                    ? clean.map((m) => (m.id === botId ? finalBotMsg : m))
+                    : hasUser
+                    ? [...clean, finalBotMsg]
+                    : [...clean, userMsg, finalBotMsg];
+                  messagesRef.current = next;
+                  setMessages(next);
+                  nextMessageCount = next.length;
+                }
 
                 // Background save of finished bot message
                 saveMessageToStorage(targetSessionId, finalBotMsg).catch(() => {});
 
                 // If diagram prompt was generated, call /api/diagram
                 if (eventData.diagramPrompt) {
-                  triggerDiagramGeneration(botId, eventData.diagramPrompt);
+                  triggerDiagramGeneration(botId, eventData.diagramPrompt, finalBotMsg);
                 }
 
-                persistSessionHeader(targetSessionId, finalCleanText);
+                persistSessionHeader(targetSessionId, finalCleanText, nextMessageCount);
               } else if (eventData.type === 'error') {
                 throw new Error(eventData.error || 'Error en streaming de respuesta');
               }
@@ -493,19 +610,28 @@ export default function App() {
         retryPrompt: text,
         retryImageBase64: imageBase64,
         timestamp: errorTime,
+        createdAt: new Date(Math.max(Date.now(), Date.parse(userCreatedAt) + 1)).toISOString(),
       };
-      setMessages((prev) => {
-        const clean = prev.filter((m) => !m.isError);
+      if (currentSessionIdRef.current === targetSessionId) {
+        const clean = messagesRef.current.filter(
+          (m) => !m.isError && m.sessionId === targetSessionId
+        );
         const hasUser = clean.some((m) => m.id === userMsg.id);
-        return hasUser ? [...clean, errorMsg] : [...clean, userMsg, errorMsg];
-      });
+        const next = hasUser ? [...clean, errorMsg] : [...clean, userMsg, errorMsg];
+        messagesRef.current = next;
+        setMessages(next);
+      }
     } finally {
       console.timeEnd(timerId);
       setIsLoading(false);
     }
   };
 
-  const triggerDiagramGeneration = (messageId: string, diagramPrompt: string) => {
+  const triggerDiagramGeneration = (
+    messageId: string,
+    diagramPrompt: string,
+    baseBotMsg: ChatMessage
+  ) => {
     fetch('/api/diagram', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -514,72 +640,160 @@ export default function App() {
       .then(async (diagramRes) => {
         if (!diagramRes.ok) {
           const errBody = await diagramRes.json().catch(() => ({}));
-          throw new Error(errBody.error || `HTTP ${diagramRes.status}`);
+          const err = new Error(errBody.error || `HTTP ${diagramRes.status}`);
+          (err as any).statusCode = diagramRes.status;
+          throw err;
         }
         return diagramRes.json();
       })
-      .then((diagramData) => {
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === messageId
-              ? {
-                  ...m,
-                  diagramLoading: false,
-                  diagramUrl: diagramData.imageUrl,
-                  diagramError: undefined,
-                }
-              : m
-          )
+      .then(async (diagramData) => {
+        const isAuthenticated = Boolean(auth.currentUser);
+        if (!isAuthenticated) {
+          if (currentSessionIdRef.current === baseBotMsg.sessionId) {
+            const next = messagesRef.current.map((m) =>
+              m.id === messageId
+                ? {
+                    ...m,
+                    diagramLoading: false,
+                    diagramUrl: diagramData.imageUrl,
+                    diagramError: undefined,
+                  }
+                : m
+            );
+            messagesRef.current = next;
+            setMessages(next);
+          }
+          return;
+        }
+
+        const uploadedUrl = await uploadSessionImage(
+          baseBotMsg.sessionId,
+          messageId,
+          diagramData.imageUrl
         );
+
+        if (uploadedUrl) {
+          const updatedMsg: ChatMessage = {
+            ...baseBotMsg,
+            diagramLoading: false,
+            diagramUrl: uploadedUrl,
+          };
+          delete updatedMsg.diagramError;
+
+          if (currentSessionIdRef.current === baseBotMsg.sessionId) {
+            const next = messagesRef.current.map((m) =>
+              m.id === messageId
+                ? {
+                    ...m,
+                    diagramLoading: false,
+                    diagramUrl: uploadedUrl,
+                    diagramError: undefined,
+                  }
+                : m
+            );
+            messagesRef.current = next;
+            setMessages(next);
+          }
+
+          saveMessageToStorage(baseBotMsg.sessionId, updatedMsg).catch(() => {});
+        } else {
+          const storageError =
+            'No se pudo guardar el diagrama visual en la nube. Puedes continuar con el análisis analítico o reintentarlo.';
+          const updatedMsg: ChatMessage = {
+            ...baseBotMsg,
+            diagramLoading: false,
+            diagramError: storageError,
+          };
+          delete updatedMsg.diagramUrl;
+
+          if (currentSessionIdRef.current === baseBotMsg.sessionId) {
+            const next = messagesRef.current.map((m) =>
+              m.id === messageId
+                ? {
+                    ...m,
+                    diagramLoading: false,
+                    diagramError: storageError,
+                  }
+                : m
+            );
+            messagesRef.current = next;
+            setMessages(next);
+          }
+
+          saveMessageToStorage(baseBotMsg.sessionId, updatedMsg).catch(() => {});
+        }
       })
       .catch((diagramErr: any) => {
         console.warn('Diagram generation failed:', diagramErr);
-        setMessages((prev) =>
-          prev.map((m) =>
+        const statusCode = diagramErr?.statusCode;
+        const errText =
+          statusCode === 429 || statusCode === 403 || statusCode === 400
+            ? diagramErr.message
+            : 'No se pudo generar el diagrama visual. Puedes continuar con el análisis analítico o reintentarlo.';
+        const failedMsg: ChatMessage = {
+          ...baseBotMsg,
+          diagramLoading: false,
+          diagramError: errText,
+        };
+        delete failedMsg.diagramUrl;
+
+        if (currentSessionIdRef.current === baseBotMsg.sessionId) {
+          const next = messagesRef.current.map((m) =>
             m.id === messageId
               ? {
                   ...m,
                   diagramLoading: false,
-                  diagramError:
-                    'No se pudo generar el diagrama visual. Puedes continuar con el análisis analítico o reintentarlo.',
+                  diagramError: errText,
                 }
               : m
-          )
-        );
+          );
+          messagesRef.current = next;
+          setMessages(next);
+        }
+
+        saveMessageToStorage(baseBotMsg.sessionId, failedMsg).catch(() => {});
       });
   };
 
-  const persistSessionHeader = (targetSessionId: string, previewText: string) => {
-    let sessionToSave: ChatSession | null = null;
-    setSessions((prev) => {
-      const idx = prev.findIndex((s) => s.id === targetSessionId);
-      if (idx >= 0) {
-        const cur = prev[idx];
-        const updated: ChatSession = {
-          ...cur,
-          updatedAt: new Date().toISOString(),
-          messageCount: (cur.messageCount || 0) + 2,
-          lastMessage: previewText.slice(0, 70) + '...',
-        };
-        sessionToSave = updated;
-        const updatedList = [...prev];
-        updatedList[idx] = updated;
-        return updatedList;
-      }
-      return prev;
-    });
+  const persistSessionHeader = (
+    targetSessionId: string,
+    previewText: string,
+    explicitMessageCount?: number
+  ) => {
+    const cur = sessionsRef.current.find((s) => s.id === targetSessionId);
+    if (!cur) return;
 
-    if (sessionToSave) {
-      saveSessionToStorage(sessionToSave).catch(() => {});
-    }
+    const realCount =
+      explicitMessageCount ??
+      messagesRef.current.filter((m) => !m.isError && m.sessionId === targetSessionId).length;
+
+    const updated: ChatSession = {
+      ...cur,
+      updatedAt: new Date().toISOString(),
+      messageCount: realCount > 0 ? realCount : (cur.messageCount || 0) + 2,
+      lastMessage: previewText.slice(0, 70) + '...',
+    };
+
+    const nextSessions = sessionsRef.current.map((s) =>
+      s.id === targetSessionId ? updated : s
+    );
+    sessionsRef.current = nextSessions;
+    setSessions(nextSessions);
+
+    saveSessionToStorage(updated).catch(() => {});
   };
 
   const handleRetryDiagram = async (messageId: string, diagramPrompt: string) => {
-    setMessages((prev) =>
-      prev.map((m) =>
+    const existingMsg = messagesRef.current.find((m) => m.id === messageId);
+    const targetSessionId = existingMsg?.sessionId || currentSessionIdRef.current;
+
+    if (currentSessionIdRef.current === targetSessionId) {
+      const loadingNext = messagesRef.current.map((m) =>
         m.id === messageId ? { ...m, diagramLoading: true, diagramError: undefined } : m
-      )
-    );
+      );
+      messagesRef.current = loadingNext;
+      setMessages(loadingNext);
+    }
 
     try {
       const res = await fetch('/api/diagram', {
@@ -589,30 +803,97 @@ export default function App() {
       });
       if (!res.ok) {
         const errBody = await res.json().catch(() => ({}));
-        throw new Error(errBody.error || `HTTP ${res.status}`);
+        const err = new Error(errBody.error || `HTTP ${res.status}`);
+        (err as any).statusCode = res.status;
+        throw err;
       }
       const data = await res.json();
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === messageId
-            ? { ...m, diagramLoading: false, diagramUrl: data.imageUrl, diagramError: undefined }
-            : m
-        )
-      );
+
+      if (!auth.currentUser || !targetSessionId) {
+        if (currentSessionIdRef.current === targetSessionId) {
+          const next = messagesRef.current.map((m) =>
+            m.id === messageId
+              ? { ...m, diagramLoading: false, diagramUrl: data.imageUrl, diagramError: undefined }
+              : m
+          );
+          messagesRef.current = next;
+          setMessages(next);
+        }
+        return;
+      }
+
+      const uploadedUrl = await uploadSessionImage(targetSessionId, messageId, data.imageUrl);
+      if (uploadedUrl) {
+        if (currentSessionIdRef.current === targetSessionId) {
+          const next = messagesRef.current.map((m) =>
+            m.id === messageId
+              ? { ...m, diagramLoading: false, diagramUrl: uploadedUrl, diagramError: undefined }
+              : m
+          );
+          messagesRef.current = next;
+          setMessages(next);
+        }
+
+        if (existingMsg) {
+          const updatedMsg: ChatMessage = {
+            ...existingMsg,
+            diagramLoading: false,
+            diagramUrl: uploadedUrl,
+          };
+          delete updatedMsg.diagramError;
+          saveMessageToStorage(targetSessionId, updatedMsg).catch(() => {});
+        }
+      } else {
+        const storageErr =
+          'No se pudo guardar el diagrama visual en la nube. Puedes continuar con la resolución o reintentarlo.';
+        if (currentSessionIdRef.current === targetSessionId) {
+          const next = messagesRef.current.map((m) =>
+            m.id === messageId
+              ? { ...m, diagramLoading: false, diagramError: storageErr }
+              : m
+          );
+          messagesRef.current = next;
+          setMessages(next);
+        }
+        if (existingMsg) {
+          const failedMsg: ChatMessage = {
+            ...existingMsg,
+            diagramLoading: false,
+            diagramError: storageErr,
+          };
+          delete failedMsg.diagramUrl;
+          saveMessageToStorage(targetSessionId, failedMsg).catch(() => {});
+        }
+      }
     } catch (err: any) {
       console.warn('Diagram retry failed:', err);
-      setMessages((prev) =>
-        prev.map((m) =>
+      const statusCode = err?.statusCode;
+      const errText =
+        statusCode === 429 || statusCode === 403 || statusCode === 400
+          ? err.message
+          : 'No se pudo generar el diagrama visual. Puedes continuar con la resolución.';
+      if (currentSessionIdRef.current === targetSessionId) {
+        const next = messagesRef.current.map((m) =>
           m.id === messageId
             ? {
                 ...m,
                 diagramLoading: false,
-                diagramError:
-                  'No se pudo generar el diagrama visual con Imagen. Puedes continuar con la resolución.',
+                diagramError: errText,
               }
             : m
-        )
-      );
+        );
+        messagesRef.current = next;
+        setMessages(next);
+      }
+      if (existingMsg && targetSessionId) {
+        const failedMsg: ChatMessage = {
+          ...existingMsg,
+          diagramLoading: false,
+          diagramError: errText,
+        };
+        delete failedMsg.diagramUrl;
+        saveMessageToStorage(targetSessionId, failedMsg).catch(() => {});
+      }
     }
   };
 
@@ -638,15 +919,24 @@ export default function App() {
   };
 
   const handleNewSession = () => {
+    selectRequestIdRef.current++;
+    setLoadingMessages(false);
+    messagesRef.current = [];
     setMessages([]);
+    currentSessionIdRef.current = '';
     setCurrentSessionId('');
   };
 
   const handleDeleteSession = async (sessionId: string) => {
     deleteSessionFromStorage(sessionId).catch(() => {});
-    setSessions((prev) => prev.filter((s) => s.id !== sessionId));
-    if (currentSessionId === sessionId) {
+    sessionsRef.current = sessionsRef.current.filter((s) => s.id !== sessionId);
+    setSessions(sessionsRef.current);
+    if (currentSessionIdRef.current === sessionId || currentSessionId === sessionId) {
+      selectRequestIdRef.current++;
+      setLoadingMessages(false);
+      messagesRef.current = [];
       setMessages([]);
+      currentSessionIdRef.current = '';
       setCurrentSessionId('');
     }
   };
@@ -779,6 +1069,7 @@ export default function App() {
             onOpenScanner={() => setIsScannerOpen(true)}
             onOpenVoice={() => setIsVoiceOpen(true)}
             isLoading={isLoading}
+            loadingMessages={loadingMessages}
             activeTopic={currentSession?.title || 'Tutoría de Física Aplicada'}
             activeModuleId={currentSession?.moduleId || 'electrostatica'}
             onNewSession={handleNewSession}

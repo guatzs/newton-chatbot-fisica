@@ -143,8 +143,12 @@ app.post('/api/diagram', async (req, res) => {
     res.json(result);
   } catch (err: any) {
     console.timeEnd(reqTimer);
-    console.error('Server error /api/diagram:', err);
-    res.status(500).json({ error: err?.message || 'Error generating diagram with Imagen' });
+    const statusCode =
+      typeof err?.statusCode === 'number' && err.statusCode >= 400 && err.statusCode < 600
+        ? err.statusCode
+        : 500;
+    console.error(`Server error /api/diagram (${statusCode}):`, err?.message || err);
+    res.status(statusCode).json({ error: err?.message || 'Error al generar el diagrama técnico.' });
   }
 });
 

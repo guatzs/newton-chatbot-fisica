@@ -1,6 +1,7 @@
 import { GoogleGenAI } from '@google/genai';
 import { SimulationAdjustment, SimulationParams, SimulationType } from '../types';
 import { parseSimulacion } from './simulationMarker';
+import { buildPollinationsImageUrl, looksSpanishPrompt } from '../utils/diagramUrl';
 
 export const NEWTON_SYSTEM_INSTRUCTION = `
 Eres "Newton", el tutor académico con inteligencia artificial para el curso universitario de Física Aplicada (código 815972, ciclo 2026-I) de la Universidad Científica del Sur (UCSUR).
@@ -62,13 +63,13 @@ REGLAS DE RIGOR Y FORMATO DE RESPUESTA:
        $$I_D = I_s \\left(e^{\\frac{V_D}{\\eta V_T}} - 1\\right)$$
      )
    - Si la consulta involucra la ley de Gauss en un conductor, un circuito RC transitorio o la curva I-V de un diodo, menciona que pueden visualizarlo con el simulador interactivo de Newton.
-4. Diagramas e ilustraciones con Imagen (uso controlado):
+4. Diagramas e ilustraciones (uso controlado):
    - PRINCIPIO: Responde primero y principalmente con texto, directo a lo que el estudiante preguntó. El diagrama es un apoyo, nunca el centro de la respuesta.
-   - Agrega al final de tu respuesta (antes de [SUGERENCIAS]) UNA línea con este formato exacto, solo si se cumple al menos una condición:
+   - Agrega al final de tu respuesta (antes de [SUGERENCIAS]) UNA línea con este formato exacto, escribiendo la descripción SIEMPRE en inglés (tradúcela al inglés si el estudiante escribió en español), solo si se cumple al menos una condición:
    [DIAGRAMA]: precise technical description in English of the diagram, including components, polarities (+ and -), arrow directions for current or field lines, white background, textbook educational style
 
    CUÁNDO SÍ incluir [DIAGRAMA]:
-   a) El estudiante lo pidió explícitamente ("dibuja", "grafica", "muéstrame un diagrama/esquema").
+   a) El estudiante lo pidió explícitamente ("dibuja", "grafica", "genera una imagen", "crea una imagen", "ilustra", "muéstrame un diagrama/esquema").
    b) El problema depende de una geometría o topología que el texto no transmite bien:
       - Circuitos con 2 o más mallas o nodos (Kirchhoff, redes de resistencias, RC con varias ramas).
       - Líneas de campo eléctrico o magnético, superficies gaussianas, configuraciones de varias cargas.
@@ -649,93 +650,43 @@ export class DiagramApiError extends Error {
   }
 }
 
-export async function generateNewtonDiagram(params: {
-  prompt: string;
-}): Promise<{ imageUrl: string }> {
-  console.time('[Newton Diagram] Total Generation');
+async function translateDiagramPromptToEnglish(prompt: string): Promise<string> {
+  const trimmed = prompt.trim();
+  if (!looksSpanishPrompt(trimmed)) {
+    return trimmed;
+  }
+
   const ai = getAI();
-  const cleanPrompt = params.prompt.trim();
-
-  const enhancedPrompt = `Scientific physics educational diagram: ${cleanPrompt}. High quality educational textbook schematic, clean white background, high contrast, clear technical lines, accurate electrical and physical symbols, clearly labeled components, arrow directions and polarities marked (+ and -).`;
-
-  const maxAttempts = 2;
-  let lastError: any = null;
-
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    const modelTimer = `[Newton Diagram] generateContent (gemini-3.1-flash-lite-image, attempt ${attempt})`;
-    console.time(modelTimer);
+  const modelsToTry = ['gemini-3.8-flash', 'gemini-3.1-flash-lite'];
+  for (const model of modelsToTry) {
     try {
       const response = await ai.models.generateContent({
-        model: 'gemini-3.1-flash-lite-image',
-        contents: {
-          parts: [{ text: enhancedPrompt }],
-        },
+        model,
+        contents: trimmed,
         config: {
-          imageConfig: {
-            aspectRatio: '4:3',
-          },
+          systemInstruction:
+            'Translate the given physics image/diagram prompt into concise, clear English suitable for image generation. Output ONLY the translated English prompt, with no quotes or extra explanation.',
         },
       });
-      console.timeEnd(modelTimer);
-
-      for (const part of response.candidates?.[0]?.content?.parts ?? []) {
-        if (part.inlineData?.data) {
-          const mime = part.inlineData.mimeType || 'image/png';
-          console.timeEnd('[Newton Diagram] Total Generation');
-          return {
-            imageUrl: `data:${mime};base64,${part.inlineData.data}`,
-          };
-        }
+      const translated = response.text?.trim().replace(/^["']|["']$/g, '');
+      if (translated) {
+        return translated;
       }
-
-      lastError = new DiagramApiError(
-        'El modelo no devolvió una imagen para el diagrama técnico.',
-        502
-      );
     } catch (err: any) {
-      console.timeEnd(modelTimer);
-      lastError = err;
-
-      const status = extractHttpStatus(err);
-      const errMsg = String(err?.message || '');
-
-      if (status === 429 || errMsg.includes('RESOURCE_EXHAUSTED') || errMsg.toLowerCase().includes('quota')) {
-        console.warn('[Newton Diagram] Quota exhausted / paid key required for gemini-3.1-flash-lite-image (429).');
-        console.timeEnd('[Newton Diagram] Total Generation');
-        throw new DiagramApiError(
-          'La generación de diagramas requiere una clave API con facturación activa o superó su cuota actual (Settings > Secrets). Puedes continuar con el análisis analítico.',
-          429
-        );
-      }
-
-      if (status === 403 || status === 400 || errMsg.includes('PERMISSION_DENIED') || errMsg.includes('API_KEY_INVALID')) {
-        console.warn(`[Newton Diagram] API key/permission error (${status || 'N/A'}):`, errMsg);
-        console.timeEnd('[Newton Diagram] Total Generation');
-        throw new DiagramApiError(
-          'No se pudo autorizar la generación de diagramas. Verifica tu clave API en Settings > Secrets.',
-          status === 403 ? 403 : 400
-        );
-      }
-
-      const isTransient = status === 500 || status === 502 || status === 503 || status === 504;
-      if (isTransient && attempt < maxAttempts) {
-        console.warn(`[Newton Diagram] Transient error (${status}), retrying...`);
-        await new Promise((r) => setTimeout(r, 800));
-        continue;
-      }
-
-      console.error('[Newton Diagram] Diagram generation failed:', err);
-      break;
+      console.warn(`[Newton Diagram] Prompt translation with ${model} failed:`, err?.message || err);
     }
   }
 
-  console.timeEnd('[Newton Diagram] Total Generation');
-  if (lastError instanceof DiagramApiError) {
-    throw lastError;
-  }
-  const fallbackStatus = extractHttpStatus(lastError) || 500;
-  throw new DiagramApiError(
-    'No se pudo generar el diagrama técnico educativo.',
-    fallbackStatus
-  );
+  return trimmed;
+}
+
+export async function generateNewtonDiagram(params: {
+  prompt: string;
+}): Promise<{ imageUrl: string }> {
+  console.time('[Newton Diagram] Pollinations URL Generation');
+  const cleanPrompt = params.prompt.trim();
+  const englishPrompt = await translateDiagramPromptToEnglish(cleanPrompt);
+  const imageUrl = buildPollinationsImageUrl(englishPrompt);
+  console.timeEnd('[Newton Diagram] Pollinations URL Generation');
+  return { imageUrl };
 }

@@ -402,7 +402,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                           <div className="flex items-center gap-2">
                             <span className="w-2 h-2 rounded-full bg-[#941C2F] dark:bg-[#C0334A] animate-ping"></span>
                             <span className="text-xs font-bold text-[#941C2F] dark:text-[#FF9FAE] font-mono">
-                              Generando diagrama con Imagen 3...
+                              Generando diagrama técnico...
                             </span>
                           </div>
                           <p className="text-[11px] text-[#546C37] dark:text-[#CFE3A8] mt-0.5 font-['Space_Grotesk']">
@@ -418,7 +418,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                         <div className="px-3 py-1.5 bg-[#FFFBD9] dark:bg-[#0F1A0F] border-b border-[#ADCA88]/40 dark:border-[#3C5A40]/40 flex items-center justify-between text-[11px] font-mono font-bold text-[#546C37] dark:text-[#CFE3A8]">
                           <span className="flex items-center gap-1.5">
                             <Sparkles className="w-3.5 h-3.5 text-[#941C2F] dark:text-[#FF9FAE]" />
-                            Diagrama Técnico (Imagen 3)
+                            Diagrama Técnico
                           </span>
                           <a
                             href={msg.diagramUrl}

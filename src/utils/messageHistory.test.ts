@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { ChatMessage } from '../types';
-import { mergeAndSortMessages, upsertMessageInList } from './messageHistory';
+import { buildGeminiHistory, mergeAndSortMessages, upsertMessageInList } from './messageHistory';
 
 function makeMsg(overrides: Partial<ChatMessage> & { id: string }): ChatMessage {
   return {
@@ -102,5 +102,52 @@ describe('mergeAndSortMessages', () => {
     assert.equal(result[0].imageUrl, 'https://storage.example/usr-1.jpg');
     assert.equal(result[1].id, 'bot-1');
     assert.equal(result[1].diagramUrl, 'https://storage.example/bot-1.jpg');
+  });
+});
+
+describe('buildGeminiHistory', () => {
+  const msg = (id: string, sender: 'user' | 'bot', text: string, extra: Partial<ChatMessage> = {}): ChatMessage => ({
+    id,
+    sessionId: 's1',
+    sender,
+    text,
+    timestamp: '10:00',
+    ...extra,
+  });
+
+  it('descarta errores y mensajes vacíos y une turnos seguidos del mismo rol', () => {
+    const history = buildGeminiHistory([
+      msg('u1', 'user', '¿Qué es la ley de Ohm?'),
+      msg('b1', 'bot', '', { stopped: true }),
+      msg('u2', 'user', 'Explícalo con un ejemplo'),
+      msg('e1', 'bot', 'No pude conectarme', { isError: true }),
+      msg('b2', 'bot', 'V = I·R. Por ejemplo...'),
+    ]);
+    assert.deepEqual(history, [
+      { role: 'user', parts: [{ text: '¿Qué es la ley de Ohm?\n\nExplícalo con un ejemplo' }] },
+      { role: 'model', parts: [{ text: 'V = I·R. Por ejemplo...' }] },
+    ]);
+  });
+
+  it('conserva una respuesta detenida a medias como turno del modelo', () => {
+    const history = buildGeminiHistory([
+      msg('u1', 'user', 'Pregunta'),
+      msg('b1', 'bot', 'Respuesta parcial', { stopped: true }),
+    ]);
+    assert.equal(history.length, 2);
+    assert.equal(history[1].role, 'model');
+    assert.equal(history[1].parts[0].text, 'Respuesta parcial');
+  });
+
+  it('toma los últimos turnos y siempre empieza con el usuario', () => {
+    const msgs: ChatMessage[] = [];
+    for (let i = 0; i < 5; i++) {
+      msgs.push(msg(`u${i}`, 'user', `p${i}`));
+      msgs.push(msg(`b${i}`, 'bot', `r${i}`));
+    }
+    const history = buildGeminiHistory(msgs, 5);
+    assert.equal(history[0].role, 'user');
+    assert.equal(history.length, 4);
+    assert.equal(history[3].parts[0].text, 'r4');
   });
 });

@@ -28,6 +28,7 @@ import {
 } from './firebase';
 import { Home, MessageSquare, Activity, BookOpen } from 'lucide-react';
 import { useTheme } from './hooks/useTheme';
+import { buildGeminiHistory } from './utils/messageHistory';
 
 type AuthStatus = 'loading' | 'signedOut' | 'guest' | 'google' | 'verifyEmail';
 
@@ -60,6 +61,8 @@ export default function App() {
   const selectRequestIdRef = useRef<number>(0);
   const currentSessionIdRef = useRef<string>('');
   const messagesRef = useRef<ChatMessage[]>([]);
+  // Controlador para cancelar la respuesta en curso con el botón "Detener"
+  const chatAbortRef = useRef<AbortController | null>(null);
   const sessionsRef = useRef<ChatSession[]>([]);
 
   useEffect(() => {
@@ -354,6 +357,11 @@ export default function App() {
     console.time(timerId);
     setIsLoading(true);
 
+    // Cancela cualquier respuesta anterior que siguiera abierta y prepara una nueva
+    chatAbortRef.current?.abort();
+    const abortController = new AbortController();
+    chatAbortRef.current = abortController;
+
     let targetSessionId = explicitSessionId || currentSessionIdRef.current || currentSessionId;
     if (!targetSessionId) {
       targetSessionId = handleCreateNewSession(text.slice(0, 35) + '...');
@@ -387,12 +395,21 @@ export default function App() {
 
     const isVisionRequest = isVision || Boolean(imageBase64);
 
+    // Estado del streaming, accesible desde el catch para guardar la respuesta parcial si se detiene
+    let streamBotId = '';
+    let streamBotTime = '';
+    let streamBotCreatedAt = '';
+    let accumulatedStreamText = '';
+    let streamFinished = false;
+    let rafId: number | null = null;
+
     try {
       if (isVisionRequest) {
         // Non-streaming vision analysis flow (/api/vision)
         const res = await fetch('/api/vision', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          signal: abortController.signal,
           body: JSON.stringify({
             prompt: text,
             imageBase64,
@@ -446,18 +463,13 @@ export default function App() {
         persistSessionHeader(targetSessionId, data.text, nextMessageCount);
       } else {
         // SSE Streaming chat flow (/api/chat)
-        let history = baseMessages.slice(-6).map((m) => ({
-          role: m.sender === 'user' ? ('user' as const) : ('model' as const),
-          parts: [{ text: m.text }],
-        }));
-
-        while (history.length > 0 && history[0].role !== 'user') {
-          history.shift();
-        }
+        // Historial limpio: sin errores ni mensajes vacíos y sin turnos seguidos del mismo rol
+        const history = buildGeminiHistory(baseMessages, 6);
 
         const res = await fetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          signal: abortController.signal,
           body: JSON.stringify({
             prompt: text,
             history,
@@ -480,6 +492,9 @@ export default function App() {
         const botCreatedAt = new Date(
           Math.max(Date.now(), Date.parse(userCreatedAt) + 1)
         ).toISOString();
+        streamBotId = botId;
+        streamBotTime = botTime;
+        streamBotCreatedAt = botCreatedAt;
 
         const initialBotMsg: ChatMessage = {
           id: botId,
@@ -497,9 +512,7 @@ export default function App() {
         }
 
         const decoder = new TextDecoder();
-        let accumulatedStreamText = '';
         let sseBuffer = '';
-        let rafId: number | null = null;
         let updateScheduled = false;
 
         // Group live UI updates with requestAnimationFrame to prevent re-render bottlenecks
@@ -542,6 +555,7 @@ export default function App() {
                 accumulatedStreamText += eventData.text;
                 scheduleUiUpdate(accumulatedStreamText);
               } else if (eventData.type === 'done') {
+                streamFinished = true;
                 if (rafId) cancelAnimationFrame(rafId);
                 updateScheduled = false;
 
@@ -599,6 +613,52 @@ export default function App() {
         }
       }
     } catch (err: any) {
+      if (rafId) cancelAnimationFrame(rafId);
+
+      // El estudiante pulsó "Detener": se conserva lo que Newton alcanzó a escribir
+      if (abortController.signal.aborted) {
+        if (streamFinished) return;
+        console.info('[Chat UI] Respuesta detenida por el estudiante.');
+        const partialText = accumulatedStreamText.trim();
+        const stoppedMsg: ChatMessage = {
+          id: streamBotId || `bot-${Date.now()}`,
+          sessionId: targetSessionId,
+          sender: 'bot',
+          text: partialText,
+          quickChips: [],
+          stopped: true,
+          timestamp:
+            streamBotTime || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          createdAt:
+            streamBotCreatedAt ||
+            new Date(Math.max(Date.now(), Date.parse(userCreatedAt) + 1)).toISOString(),
+        };
+
+        let nextMessageCount = baseMessages.length + (partialText ? 2 : 1);
+        if (currentSessionIdRef.current === targetSessionId) {
+          const clean = messagesRef.current.filter(
+            (m) => !m.isError && m.sessionId === targetSessionId
+          );
+          const hasUser = clean.some((m) => m.id === userMsg.id);
+          const exists = clean.some((m) => m.id === stoppedMsg.id);
+          const next = exists
+            ? clean.map((m) => (m.id === stoppedMsg.id ? stoppedMsg : m))
+            : hasUser
+            ? [...clean, stoppedMsg]
+            : [...clean, userMsg, stoppedMsg];
+          messagesRef.current = next;
+          setMessages(next);
+          nextMessageCount = next.length;
+        }
+
+        // Solo se guarda en Firestore si hay texto parcial (no se guardan mensajes vacíos)
+        if (partialText) {
+          saveMessageToStorage(targetSessionId, stoppedMsg).catch(() => {});
+          persistSessionHeader(targetSessionId, partialText, nextMessageCount);
+        }
+        return;
+      }
+
       console.error('Error contacting Newton AI:', err);
       const errorTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       const errorMsg: ChatMessage = {
@@ -623,8 +683,17 @@ export default function App() {
       }
     } finally {
       console.timeEnd(timerId);
-      setIsLoading(false);
+      // Solo se apaga el estado de carga si esta petición sigue siendo la activa
+      if (chatAbortRef.current === abortController) {
+        chatAbortRef.current = null;
+        setIsLoading(false);
+      }
     }
+  };
+
+  // Botón "Detener": corta la respuesta en curso (el servidor también cancela la llamada a Gemini)
+  const handleStopGeneration = () => {
+    chatAbortRef.current?.abort();
   };
 
   const triggerDiagramGeneration = (
@@ -1069,6 +1138,7 @@ export default function App() {
             onOpenScanner={() => setIsScannerOpen(true)}
             onOpenVoice={() => setIsVoiceOpen(true)}
             isLoading={isLoading}
+            onStopGeneration={handleStopGeneration}
             loadingMessages={loadingMessages}
             activeTopic={currentSession?.title || 'Tutoría de Física Aplicada'}
             activeModuleId={currentSession?.moduleId || 'electrostatica'}

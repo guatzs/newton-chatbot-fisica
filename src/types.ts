@@ -48,6 +48,8 @@ export interface ChatMessage {
   diagramUrl?: string;
   diagramLoading?: boolean;
   diagramError?: string;
+  /** true si el estudiante detuvo la respuesta con el botón "Detener" */
+  stopped?: boolean;
 }
 
 export interface ChatSession {

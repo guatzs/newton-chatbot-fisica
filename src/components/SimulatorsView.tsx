@@ -1,23 +1,25 @@
 import React, { useState } from 'react';
 import { SphericalConductorSim } from './simulators/SphericalConductorSim';
-import { RcCircuitSim } from './simulators/RcCircuitSim';
-import { DiodeIvSim } from './simulators/DiodeIvSim';
 import { CoulombSim } from './simulators/CoulombSim';
 import { OhmSim } from './simulators/OhmSim';
-import { Zap, Activity, Cpu, Sparkles, Magnet, Gauge } from 'lucide-react';
+import { Zap, Sparkles, Magnet, Gauge } from 'lucide-react';
 
 interface SimulatorsViewProps {
   initialSimulator?: string;
   onAskNewton: (prompt: string) => void;
 }
 
+const VALID_SIMULATORS = ['conductor_gauss', 'coulomb', 'ohm'] as const;
+type ActiveSimulator = (typeof VALID_SIMULATORS)[number];
+
 export const SimulatorsView: React.FC<SimulatorsViewProps> = ({
   initialSimulator = 'conductor_gauss',
   onAskNewton,
 }) => {
-  const [activeSim, setActiveSim] = useState<'conductor_gauss' | 'circuito_rc' | 'diodo_iv' | 'coulomb' | 'ohm'>(
-    (initialSimulator as any) || 'conductor_gauss'
-  );
+  const defaultSim: ActiveSimulator = VALID_SIMULATORS.includes(initialSimulator as ActiveSimulator)
+    ? (initialSimulator as ActiveSimulator)
+    : 'conductor_gauss';
+  const [activeSim, setActiveSim] = useState<ActiveSimulator>(defaultSim);
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-6 space-y-6 animate-in fade-in duration-300">
@@ -34,7 +36,7 @@ export const SimulatorsView: React.FC<SimulatorsViewProps> = ({
             Micro-Simuladores Físicos en Tiempo Real
           </h1>
           <p className="text-xs text-[#546C37]/80 dark:text-[#CFE3A8]/80 font-['Space_Grotesk'] mt-0.5">
-            Experimenta con parámetros de simetría electrostática, constantes de tiempo en circuitos y curvas semiconductoras.
+            Experimenta con simetría electrostática, la ley de Coulomb y la ley de Ohm en tiempo real.
           </p>
         </div>
       </div>
@@ -54,30 +56,6 @@ export const SimulatorsView: React.FC<SimulatorsViewProps> = ({
         </button>
 
         <button
-          onClick={() => setActiveSim('circuito_rc')}
-          className={`px-4 py-2 rounded-2xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
-            activeSim === 'circuito_rc'
-              ? 'bg-[#546C37] dark:bg-[#6E8F47] text-white shadow-sm'
-              : 'bg-[#D6E3B1]/60 dark:bg-[#24402B]/60 text-[#546C37] dark:text-[#CFE3A8] hover:bg-[#D6E3B1] dark:hover:bg-[#24402B]'
-          }`}
-        >
-          <Activity className="w-4 h-4 text-[#FA8989]" />
-          <span>2. Circuito RC Transitorio</span>
-        </button>
-
-        <button
-          onClick={() => setActiveSim('diodo_iv')}
-          className={`px-4 py-2 rounded-2xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
-            activeSim === 'diodo_iv'
-              ? 'bg-[#546C37] dark:bg-[#6E8F47] text-white shadow-sm'
-              : 'bg-[#D6E3B1]/60 dark:bg-[#24402B]/60 text-[#546C37] dark:text-[#CFE3A8] hover:bg-[#D6E3B1] dark:hover:bg-[#24402B]'
-          }`}
-        >
-          <Cpu className="w-4 h-4 text-[#FA8989]" />
-          <span>3. Diodo Shockley & Rectificación</span>
-        </button>
-
-        <button
           onClick={() => setActiveSim('coulomb')}
           className={`px-4 py-2 rounded-2xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
             activeSim === 'coulomb'
@@ -86,7 +64,7 @@ export const SimulatorsView: React.FC<SimulatorsViewProps> = ({
           }`}
         >
           <Magnet className="w-4 h-4 text-[#FA8989]" />
-          <span>4. Ley de Coulomb</span>
+          <span>2. Ley de Coulomb</span>
         </button>
 
         <button
@@ -98,7 +76,7 @@ export const SimulatorsView: React.FC<SimulatorsViewProps> = ({
           }`}
         >
           <Gauge className="w-4 h-4 text-[#FA8989]" />
-          <span>5. Ley de Ohm</span>
+          <span>3. Ley de Ohm</span>
         </button>
       </div>
 
@@ -120,48 +98,6 @@ export const SimulatorsView: React.FC<SimulatorsViewProps> = ({
               >
                 <Sparkles className="w-3.5 h-3.5" />
                 Pedir a Newton que deduzca este caso paso a paso
-              </button>
-            </div>
-          </div>
-        )}
-
-        {activeSim === 'circuito_rc' && (
-          <div className="space-y-4">
-            <RcCircuitSim />
-            <div className="bg-[#FFFBD9] dark:bg-[#0F1A0F] rounded-2xl p-4 text-xs text-[#546C37] dark:text-[#CFE3A8] border border-[#ADCA88]/40 dark:border-[#3C5A40]/40 space-y-1">
-              <h4 className="font-bold text-sm text-[#941C2F] dark:text-[#FF9FAE] font-['Pixelify_Sans']">
-                Fundamento Físico: Ecuación Diferencial del Circuito RC
-              </h4>
-              <p>
-                Aplicando la ley de tensiones de Kirchhoff (KVL): ε - i(t)R - q(t)/C = 0. Como i = dq/dt, se obtiene la ecuación diferencial cuya solución es q(t) = Cε(1 - e^(-t/τ)) con constante de tiempo τ = RC. Al transcurrir t = τ, la tensión en el condensador alcanza el 63.2% de la tensión de la fuente.
-              </p>
-              <button
-                onClick={() => onAskNewton('Resuelve un ejercicio de examen con un circuito RC donde R = 20kΩ, C = 47µF y fuente de 15V, calculando el tiempo para llegar al 90% de la carga máxima.')}
-                className="mt-2 text-xs font-bold text-[#941C2F] dark:text-[#FF9FAE] hover:underline flex items-center gap-1 cursor-pointer"
-              >
-                <Sparkles className="w-3.5 h-3.5" />
-                Resolver un ejercicio numérico de examen sobre este circuito RC
-              </button>
-            </div>
-          </div>
-        )}
-
-        {activeSim === 'diodo_iv' && (
-          <div className="space-y-4">
-            <DiodeIvSim />
-            <div className="bg-[#FFFBD9] dark:bg-[#0F1A0F] rounded-2xl p-4 text-xs text-[#546C37] dark:text-[#CFE3A8] border border-[#ADCA88]/40 dark:border-[#3C5A40]/40 space-y-1">
-              <h4 className="font-bold text-sm text-[#941C2F] dark:text-[#FF9FAE] font-['Pixelify_Sans']">
-                Fundamento Físico: Unión P-N y Rectificación
-              </h4>
-              <p>
-                La unión semiconductora P-N presenta una barrera de potencial de contacto (aproximadamente 0.7 V en Silicio a temperatura ambiente). En polarización directa por encima de V_γ, la corriente crece exponencialmente según Shockley. Al conectar una señal alterna senoidal, el diodo conduce solo en el semiciclo positivo. Con un condensador en paralelo a la carga, el rizado ΔV_r disminuye según ΔV_r = I_dc / (f·C).
-              </p>
-              <button
-                onClick={() => onAskNewton('Explícame cómo se calcula el condensador de filtrado necesario para que un rectificador de onda completa de 60Hz tenga un factor de rizado menor al 5%.')}
-                className="mt-2 text-xs font-bold text-[#941C2F] dark:text-[#FF9FAE] hover:underline flex items-center gap-1 cursor-pointer"
-              >
-                <Sparkles className="w-3.5 h-3.5" />
-                Consultar el cálculo del capacitor de filtrado con Newton
               </button>
             </div>
           </div>

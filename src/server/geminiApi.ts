@@ -2,6 +2,7 @@ import { GoogleGenAI } from '@google/genai';
 import { SimulationAdjustment, SimulationParams, SimulationType } from '../types';
 import { parseSimulacion } from './simulationMarker';
 import { buildPollinationsImageUrl, looksSpanishPrompt } from '../utils/diagramUrl';
+import { formatCourseMaterialPromptSection } from './courseMaterial';
 
 export const NEWTON_SYSTEM_INSTRUCTION = `
 Eres "Newton", el tutor académico con inteligencia artificial para el curso universitario de Física Aplicada (código 815972, ciclo 2026-I) de la Universidad Científica del Sur (UCSUR).
@@ -62,19 +63,15 @@ REGLAS DE RIGOR Y FORMATO DE RESPUESTA:
        $$q(t) = C\\mathcal{E}(1 - e^{-t/RC})$$
        $$I_D = I_s \\left(e^{\\frac{V_D}{\\eta V_T}} - 1\\right)$$
      )
-   - Si la consulta involucra la ley de Gauss en un conductor, un circuito RC transitorio o la curva I-V de un diodo, menciona que pueden visualizarlo con el simulador interactivo de Newton.
+   - Si la consulta involucra la ley de Gauss en un conductor, la ley de Coulomb entre dos cargas o la ley de Ohm en un circuito, menciona que pueden visualizarlo con el simulador interactivo de Newton.
 4. Diagramas e ilustraciones (uso controlado):
    - PRINCIPIO: Responde primero y principalmente con texto, directo a lo que el estudiante preguntó. El diagrama es un apoyo, nunca el centro de la respuesta.
-   - Agrega al final de tu respuesta (antes de [SUGERENCIAS]) UNA línea con este formato exacto, escribiendo la descripción SIEMPRE en inglés (tradúcela al inglés si el estudiante escribió en español), solo si se cumple al menos una condición:
+   - Agrega al final de tu respuesta (antes de [SUGERENCIAS]) UNA línea con este formato exacto, escribiendo la descripción SIEMPRE en inglés (tradúcela al inglés si el estudiante escribió en español), solo si el estudiante lo pidió explícitamente:
    [DIAGRAMA]: precise technical description in English of the diagram, including components, polarities (+ and -), arrow directions for current or field lines, white background, textbook educational style
 
-   CUÁNDO SÍ incluir [DIAGRAMA]:
-   a) El estudiante lo pidió explícitamente ("dibuja", "grafica", "genera una imagen", "crea una imagen", "ilustra", "muéstrame un diagrama/esquema").
-   b) El problema depende de una geometría o topología que el texto no transmite bien:
-      - Circuitos con 2 o más mallas o nodos (Kirchhoff, redes de resistencias, RC con varias ramas).
-      - Líneas de campo eléctrico o magnético, superficies gaussianas, configuraciones de varias cargas.
-      - Diagramas de espira/flujo para Faraday-Lenz o fuerza magnética con direcciones vectoriales.
-      - Circuitos rectificadores con diodo, filtro o Zener.
+   CUÁNDO SÍ incluir [DIAGRAMA] (ÚNICO caso permitido):
+   - El estudiante lo pidió explícitamente en SU ÚLTIMO mensaje ("dibuja", "grafica", "genera una imagen", "crea una imagen", "ilustra", "muéstrame un diagrama/esquema").
+   - Si el problema tiene geometría o topología compleja (circuitos con varias mallas, líneas de campo, espiras, rectificadores) pero el estudiante NO pidió el dibujo, NO incluyas [DIAGRAMA]: ofrécelo solo como una de las [SUGERENCIAS] (ej. "Dibuja el diagrama del circuito").
 
    CUÁNDO NO incluir [DIAGRAMA]:
    - Preguntas de definición, fórmula, unidades o conceptos (ej. "¿Qué dice la ley de Ohm?", "¿Qué es la constante tau?").
@@ -88,14 +85,15 @@ REGLAS DE RIGOR Y FORMATO DE RESPUESTA:
    CASOS DUDOSOS: Si un diagrama podría ayudar pero no es necesario, NO lo generes. En su lugar, ofrécelo como una de las sugerencias de [SUGERENCIAS] (ej. "Dibuja el diagrama del circuito").
 
    EJEMPLOS:
-   - "Calcula la corriente en R2 del circuito con dos fuentes y tres resistencias" → SÍ (topología de mallas).
+   - "Calcula la corriente en R2 del circuito con dos fuentes y tres resistencias" → NO (no lo pidió; ofrece "Dibuja el diagrama del circuito" en [SUGERENCIAS]).
    - "¿Cuál es la fórmula de la ley de Gauss?" → NO (solo definición).
    - "Calcula la fuerza entre q1 = 2 µC y q2 = 3 µC separadas 0.5 m" → NO (una fórmula, sin geometría compleja).
-   - "Explícame cómo se rectifica una señal con un puente de diodos" → SÍ (circuito con polaridades).
+   - "Explícame cómo se rectifica una señal con un puente de diodos" → NO (no lo pidió; ofrécelo en [SUGERENCIAS]).
+   - "Dibuja el puente de diodos con las polaridades" → SÍ (pedido explícito).
    - "Dibújame las líneas de campo de un dipolo" → SÍ (pedido explícito).
    - "¿Cuánto vale la permitividad del vacío?" → NO.
 
-   Los simuladores interactivos de Newton (conductor de Gauss, circuito RC, diodo I-V) son independientes del diagrama: puedes mencionarlos en texto cuando el tema coincida, pero no los uses como sustituto de [DIAGRAMA].
+   Los simuladores interactivos de Newton (conductor de Gauss, ley de Coulomb, ley de Ohm) son independientes del diagrama: puedes mencionarlos en texto cuando el tema coincida, pero no los uses como sustituto de [DIAGRAMA].
 
 5. Simulaciones interactivas prefabricadas:
    - Cuando el estudiante pida ver, probar o simular la ley de Coulomb (dos cargas puntuales alineadas) o la ley de Ohm (batería y resistencia), o cuando resuelvas un ejercicio numérico de esos dos temas, agrega UNA sola línea [SIMULACION]: antes de [SUGERENCIAS]:, con uno de estos formatos exactos:
@@ -137,6 +135,14 @@ Cuando recibas una imagen (circuito, diagrama, gráfico, pizarra o apunte manusc
    - Concluye con la solución final destacada.
 `;
 
+export function getNewtonSystemInstruction(): string {
+  return `${NEWTON_SYSTEM_INSTRUCTION}\n\n${formatCourseMaterialPromptSection()}`;
+}
+
+export function getNewtonVisionInstruction(): string {
+  return `${getNewtonSystemInstruction()}\n\n${NEWTON_VISION_INSTRUCTION.replace(NEWTON_SYSTEM_INSTRUCTION, '').trim()}`;
+}
+
 let aiInstance: GoogleGenAI | null = null;
 function getAI(): GoogleGenAI {
   if (!aiInstance) {
@@ -153,6 +159,25 @@ function getAI(): GoogleGenAI {
   return aiInstance;
 }
 
+const MODEL_ATTEMPT_TIMEOUT_MS = 15000;
+const AUDIO_TRANSCRIPTION_MODELS = ['gemini-4-hydrogen', 'gemini-3.1-flash-lite'] as const;
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, model: string): Promise<T> {
+  let timeoutId: NodeJS.Timeout | null = null;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      const tErr = new Error(`Timeout de ${timeoutMs}ms excedido en modelo ${model}`);
+      tErr.name = 'TimeoutError';
+      reject(tErr);
+    }, timeoutMs);
+  });
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+}
+
 /**
  * Extracts HTTP status code from an error thrown by the @google/genai SDK.
  * The SDK attaches the status code directly to `err.status` on ApiError instances.
@@ -166,7 +191,7 @@ export function extractHttpStatus(err: any): number | null {
   if (typeof err.message === 'string') {
     const match = err.message.match(/"code":\s*(\d+)/);
     if (match) return parseInt(match[1], 10);
-    const httpMatch = err.message.match(/\b(404|429|500|502|503|504)\b/);
+    const httpMatch = err.message.match(/\b(400|401|403|404|429|5\d{2})\b/);
     if (httpMatch) return parseInt(httpMatch[1], 10);
   }
   return null;
@@ -174,14 +199,18 @@ export function extractHttpStatus(err: any): number | null {
 
 /**
  * Checks if the error qualifies for an automatic failover to the next fallback model.
- * Per requirement: 429, 500, 503, 404 or Timeout.
+ * Only passes to the next model on nonexistent/unsupported model (404/not found), 429, 5xx, or attempt timeout.
  */
 export function isRetryableModelError(err: any): boolean {
-  if (err?.name === 'TimeoutError' || err?.message?.includes('timeout') || err?.message?.includes('Timeout')) {
+  if (err?.name === 'TimeoutError' || /timeout/i.test(err?.message || '')) {
     return true;
   }
   const status = extractHttpStatus(err);
-  if (status && [404, 429, 500, 502, 503, 504].includes(status)) {
+  if (status === 404 || status === 429 || (status !== null && status >= 500 && status < 600)) {
+    return true;
+  }
+  const msg = typeof err?.message === 'string' ? err.message : '';
+  if (/not_found|model.*not found|is not found|does not exist|unsupported model/i.test(msg)) {
     return true;
   }
   return false;
@@ -298,7 +327,7 @@ export async function streamNewtonAI(params: {
         model,
         contents,
         config: {
-          systemInstruction: NEWTON_SYSTEM_INSTRUCTION,
+          systemInstruction: getNewtonSystemInstruction(),
         },
       });
 
@@ -392,10 +421,6 @@ export async function streamNewtonAI(params: {
     const lower = (params.prompt + ' ' + cleanText).toLowerCase();
     if (lower.includes('conductor') && (lower.includes('gauss') || lower.includes('equilibrio') || lower.includes('esfera'))) {
       simulationType = 'conductor_gauss';
-    } else if (lower.includes('circuito rc') || lower.includes('tau = rc') || lower.includes('carga y descarga')) {
-      simulationType = 'circuito_rc';
-    } else if (lower.includes('diodo') || lower.includes('shockley') || lower.includes('rectificador') || lower.includes('curva i-v') || lower.includes('zener')) {
-      simulationType = 'diodo_iv';
     } else if (lower.includes('ley de coulomb')) {
       simulationType = 'coulomb';
     } else if (lower.includes('ley de ohm')) {
@@ -407,10 +432,6 @@ export async function streamNewtonAI(params: {
   if (quickChips.length === 0) {
     if (simulationType === 'conductor_gauss') {
       quickChips = ['Explícame el caso r < R', 'Dame un ejemplo numérico', '¿Qué pasa si es un aislante?', 'Graficar campo'];
-    } else if (simulationType === 'circuito_rc') {
-      quickChips = ['¿Cómo calculo la constante tau?', 'Graficar voltaje del condensador', 'Dame un ejercicio de examen'];
-    } else if (simulationType === 'diodo_iv') {
-      quickChips = ['Explícame la curva I-V', '¿Cómo opera el diodo Zener?', 'Cálculo de voltaje rizado'];
     } else if (simulationType === 'coulomb') {
       quickChips = ['Duplica la distancia: ¿qué pasa con F?', 'Cambia q2 a negativo', 'Dame un ejercicio de examen'];
     } else if (simulationType === 'ohm') {
@@ -484,17 +505,22 @@ export async function askNewtonVision(params: {
   let rawResponseText = '';
   let lastError: any = null;
 
-  for (const model of modelsToTry) {
+  for (let i = 0; i < modelsToTry.length; i++) {
+    const model = modelsToTry[i];
     const modelTimer = `[Newton Vision] generateContent (${model})`;
     console.time(modelTimer);
     try {
-      const response = await ai.models.generateContent({
-        model,
-        contents,
-        config: {
-          systemInstruction: NEWTON_VISION_INSTRUCTION,
-        },
-      });
+      const response = await withTimeout(
+        ai.models.generateContent({
+          model,
+          contents,
+          config: {
+            systemInstruction: getNewtonVisionInstruction(),
+          },
+        }),
+        MODEL_ATTEMPT_TIMEOUT_MS,
+        model
+      );
 
       console.timeEnd(modelTimer);
       rawResponseText = response.text || '';
@@ -502,8 +528,15 @@ export async function askNewtonVision(params: {
     } catch (err: any) {
       console.timeEnd(modelTimer);
       lastError = err;
-      console.warn(`[Newton Vision] Model ${model} failed, trying next fallback:`, err?.message || err);
-      await new Promise((r) => setTimeout(r, 500));
+      const retryable = isRetryableModelError(err);
+      console.warn(
+        `[Newton Vision] Model ${model} failed (retryable=${retryable}):`,
+        err?.message || err
+      );
+      if (retryable && i < modelsToTry.length - 1) {
+        continue;
+      }
+      throw err;
     }
   }
 
@@ -539,10 +572,6 @@ export async function askNewtonVision(params: {
     const lower = (userPrompt + ' ' + cleanText).toLowerCase();
     if (lower.includes('conductor') && (lower.includes('gauss') || lower.includes('equilibrio') || lower.includes('esfera'))) {
       simulationType = 'conductor_gauss';
-    } else if (lower.includes('circuito rc') || lower.includes('tau = rc') || lower.includes('carga y descarga')) {
-      simulationType = 'circuito_rc';
-    } else if (lower.includes('diodo') || lower.includes('shockley') || lower.includes('rectificador') || lower.includes('curva i-v') || lower.includes('zener')) {
-      simulationType = 'diodo_iv';
     } else if (lower.includes('ley de coulomb')) {
       simulationType = 'coulomb';
     } else if (lower.includes('ley de ohm')) {
@@ -551,12 +580,8 @@ export async function askNewtonVision(params: {
   }
 
   if (quickChips.length === 0) {
-    if (simulationType === 'circuito_rc') {
-      quickChips = ['Calcular voltaje en el condensador', '¿Cuál es la corriente inicial?', 'Simular curva de carga'];
-    } else if (simulationType === 'conductor_gauss') {
+    if (simulationType === 'conductor_gauss') {
       quickChips = ['Explícame el caso r < R', 'Ver simulación interactiva', 'Calcular densidad superficial'];
-    } else if (simulationType === 'diodo_iv') {
-      quickChips = ['Calcular punto de operación Q', '¿Cuál es el voltaje rizado?', 'Ver curva I-V'];
     } else if (simulationType === 'coulomb') {
       quickChips = ['Duplica la distancia: ¿qué pasa con F?', 'Cambia q2 a negativo', 'Dame un ejercicio de examen'];
     } else if (simulationType === 'ohm') {
@@ -588,9 +613,7 @@ export async function transcribeNewtonAudio(params: {
   console.time('[Newton Audio] Total Transcription');
   const ai = getAI();
   const cleanBase64 = params.audioBase64.replace(/^data:[^;]+;base64,/, '');
-  const mimeType = params.mimeType || 'audio/webm';
-
-  const modelsToTry = ['gemini-3.5-transcribe', 'gemini-3.8-flash', 'gemini-3.1-flash-lite'];
+  const mimeType = (params.mimeType || 'audio/webm').split(';')[0].trim() || 'audio/webm';
 
   const contents = [
     {
@@ -612,14 +635,19 @@ export async function transcribeNewtonAudio(params: {
   let transcribedText = '';
   let lastError: any = null;
 
-  for (const model of modelsToTry) {
+  for (let i = 0; i < AUDIO_TRANSCRIPTION_MODELS.length; i++) {
+    const model = AUDIO_TRANSCRIPTION_MODELS[i];
     const modelTimer = `[Newton Audio] transcribe (${model})`;
     console.time(modelTimer);
     try {
-      const response = await ai.models.generateContent({
-        model,
-        contents,
-      });
+      const response = await withTimeout(
+        ai.models.generateContent({
+          model,
+          contents,
+        }),
+        MODEL_ATTEMPT_TIMEOUT_MS,
+        model
+      );
 
       console.timeEnd(modelTimer);
       transcribedText = response.text ? response.text.trim() : '';
@@ -627,8 +655,15 @@ export async function transcribeNewtonAudio(params: {
     } catch (err: any) {
       console.timeEnd(modelTimer);
       lastError = err;
-      console.warn(`[Newton Audio] Model ${model} failed, trying next:`, err?.message || err);
-      await new Promise((r) => setTimeout(r, 500));
+      const retryable = isRetryableModelError(err);
+      console.warn(
+        `[Newton Audio] Model ${model} failed (retryable=${retryable}):`,
+        err?.message || err
+      );
+      if (retryable && i < AUDIO_TRANSCRIPTION_MODELS.length - 1) {
+        continue;
+      }
+      throw err;
     }
   }
 
@@ -686,7 +721,7 @@ export async function generateNewtonDiagram(params: {
   console.time('[Newton Diagram] Pollinations URL Generation');
   const cleanPrompt = params.prompt.trim();
   const englishPrompt = await translateDiagramPromptToEnglish(cleanPrompt);
-  const imageUrl = buildPollinationsImageUrl(englishPrompt);
+  const imageUrl = buildPollinationsImageUrl(englishPrompt, Math.floor(Math.random() * 1000000));
   console.timeEnd('[Newton Diagram] Pollinations URL Generation');
   return { imageUrl };
 }

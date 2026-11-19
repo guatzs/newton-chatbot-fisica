@@ -253,7 +253,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
             Micro-Simuladores
           </h4>
           <p className="text-xs text-[#546C37]/70 dark:text-[#CFE3A8]/70 mt-0.5">
-            Líneas de campo, circuitos RC transitorios y diodos en 2D interactivo.
+            Conductor en equilibrio (Gauss), Ley de Coulomb y Ley de Ohm en 2D interactivo.
           </p>
         </div>
 

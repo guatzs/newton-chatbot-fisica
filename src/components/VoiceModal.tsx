@@ -8,6 +8,8 @@ interface VoiceModalProps {
   onSubmitVoicePrompt: (prompt: string) => void;
 }
 
+const MAX_RECORDING_SECONDS = 60;
+
 export const VoiceModal: React.FC<VoiceModalProps> = ({
   isOpen,
   onClose,
@@ -19,32 +21,65 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({
   const [recordingSeconds, setRecordingSeconds] = useState<number>(0);
   const [permissionDenied, setPermissionDenied] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [autoStopNotice, setAutoStopNotice] = useState<string | null>(null);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioStreamRef = useRef<MediaStream | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastAudioRef = useRef<{ blob: Blob; mimeType: string } | null>(null);
+  const abortOnCloseRef = useRef<boolean>(false);
+
+  const stopAudioTracks = () => {
+    if (audioStreamRef.current) {
+      audioStreamRef.current.getTracks().forEach((track) => track.stop());
+      audioStreamRef.current = null;
+    }
+  };
 
   // Clean state when modal opens or closes — DO NOT start recording automatically
   useEffect(() => {
     if (!isOpen) {
+      abortOnCloseRef.current = true;
       stopRecordingCleanup();
       setTranscript('');
       setPermissionDenied(false);
       setErrorMessage(null);
+      setAutoStopNotice(null);
       setIsTranscribing(false);
       setRecordingSeconds(0);
+      lastAudioRef.current = null;
+    } else {
+      abortOnCloseRef.current = false;
     }
     return () => {
+      abortOnCloseRef.current = true;
       stopRecordingCleanup();
     };
   }, [isOpen]);
 
-  // Timer effect for recording duration
+  // Timer effect for recording duration with 60s automatic cutoff
   useEffect(() => {
     if (isRecording) {
       timerRef.current = setInterval(() => {
-        setRecordingSeconds((prev) => prev + 1);
+        setRecordingSeconds((prev) => {
+          const next = prev + 1;
+          if (next >= MAX_RECORDING_SECONDS) {
+            setAutoStopNotice(
+              'Se alcanzó el límite máximo de 60 segundos. La grabación se detuvo automáticamente.'
+            );
+            if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+              try {
+                mediaRecorderRef.current.stop();
+              } catch {
+                stopAudioTracks();
+              }
+            }
+            setIsRecording(false);
+            return MAX_RECORDING_SECONDS;
+          }
+          return next;
+        });
       }, 1000);
     } else {
       if (timerRef.current) {
@@ -64,26 +99,17 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       try {
         mediaRecorderRef.current.stop();
-      } catch (e) {
+      } catch {
         // ignore
       }
     }
-    if (audioStreamRef.current) {
-      audioStreamRef.current.getTracks().forEach((track) => track.stop());
-      audioStreamRef.current = null;
-    }
+    stopAudioTracks();
     setIsRecording(false);
   };
 
   const getSupportedMimeType = (): string => {
     if (typeof MediaRecorder === 'undefined') return '';
-    const types = [
-      'audio/webm;codecs=opus',
-      'audio/webm',
-      'audio/mp4',
-      'audio/ogg;codecs=opus',
-      'audio/wav',
-    ];
+    const types = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/webm'];
     for (const t of types) {
       if (MediaRecorder.isTypeSupported(t)) return t;
     }
@@ -93,10 +119,25 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({
   const handleStartRecording = async () => {
     setPermissionDenied(false);
     setErrorMessage(null);
+    setAutoStopNotice(null);
     audioChunksRef.current = [];
+    abortOnCloseRef.current = false;
 
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      setErrorMessage('Tu navegador no cuenta con soporte para captura de audio con MediaRecorder.');
+    if (!window.isSecureContext) {
+      setErrorMessage(
+        'La grabación de audio requiere una conexión segura (HTTPS o localhost). Verifica la dirección o escribe tu consulta directamente.'
+      );
+      return;
+    }
+
+    if (
+      !navigator.mediaDevices ||
+      typeof navigator.mediaDevices.getUserMedia !== 'function' ||
+      typeof MediaRecorder === 'undefined'
+    ) {
+      setErrorMessage(
+        'Tu navegador no permite capturar audio desde este dispositivo. Usa Chrome, Safari o Edge actualizado, o escribe tu consulta.'
+      );
       return;
     }
 
@@ -116,31 +157,45 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({
       };
 
       mediaRecorder.onstop = async () => {
-        const actualMime = mimeType || mediaRecorder.mimeType || 'audio/webm';
-        const audioBlob = new Blob(audioChunksRef.current, { type: actualMime });
-        
-        // Stop audio tracks after recording finishes
-        if (audioStreamRef.current) {
-          audioStreamRef.current.getTracks().forEach((track) => track.stop());
-          audioStreamRef.current = null;
+        const rawMime = mimeType || mediaRecorder.mimeType || 'audio/webm';
+        const cleanMime = rawMime.split(';')[0].trim() || 'audio/webm';
+        const audioBlob = new Blob(audioChunksRef.current, { type: cleanMime });
+
+        // Stop audio tracks immediately after recording finishes
+        stopAudioTracks();
+
+        if (abortOnCloseRef.current) {
+          return;
         }
 
         if (audioBlob.size > 0) {
-          await processAudioWithGemini(audioBlob, actualMime);
+          lastAudioRef.current = { blob: audioBlob, mimeType: cleanMime };
+          await processAudioWithGemini(audioBlob, cleanMime);
+        } else {
+          setErrorMessage('No se capturó audio. Verifica que tu micrófono funcione e intenta de nuevo.');
         }
+      };
+
+      mediaRecorder.onerror = () => {
+        stopAudioTracks();
+        setIsRecording(false);
+        setErrorMessage('Ocurrió un error al grabar el audio. Intenta de nuevo.');
       };
 
       mediaRecorder.start(250); // Record in 250ms chunks
       setIsRecording(true);
     } catch (err: any) {
       console.warn('Microphone access error:', err);
+      stopAudioTracks();
       if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
         setPermissionDenied(true);
         setErrorMessage(
-          'Permiso de micrófono denegado. Permite el acceso al micrófono en los ajustes o barra de direcciones de tu navegador, o escribe tu consulta directamente.'
+          'Permiso de micrófono denegado. Activa el micrófono en los permisos de tu navegador (ícono de candado junto a la URL) e intenta de nuevo.'
         );
       } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
         setErrorMessage('No se encontró ningún micrófono conectado en tu dispositivo.');
+      } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+        setErrorMessage('El micrófono está ocupado por otra aplicación. Ciérrala e intenta de nuevo.');
       } else {
         setErrorMessage(`No se pudo iniciar la grabación: ${err.message || 'error desconocido'}`);
       }
@@ -151,6 +206,8 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({
   const handleStopRecording = () => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
       mediaRecorderRef.current.stop();
+    } else {
+      stopAudioTracks();
     }
     setIsRecording(false);
   };
@@ -158,6 +215,7 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({
   const processAudioWithGemini = async (blob: Blob, mimeType: string) => {
     setIsTranscribing(true);
     setErrorMessage(null);
+    const cleanMimeType = (mimeType || 'audio/webm').split(';')[0].trim() || 'audio/webm';
 
     try {
       // Convert audio blob to base64
@@ -171,14 +229,15 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({
         reader.readAsDataURL(blob);
       });
 
-      // Send to server Gemini native transcription endpoint
+      // Send to server Gemini transcription endpoint
       const response = await fetch('/api/transcribe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           audioBase64: base64Audio,
-          mimeType: mimeType || 'audio/webm',
+          mimeType: cleanMimeType,
         }),
+        signal: AbortSignal.timeout(35000),
       });
 
       if (!response.ok) {
@@ -194,11 +253,21 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({
       }
     } catch (err: any) {
       console.error('Transcription error:', err);
-      setErrorMessage(
-        `Error al transcribir con Gemini: ${err.message || 'revisa tu conexión e intenta de nuevo'}`
-      );
+      const msg =
+        err?.name === 'TimeoutError'
+          ? 'La transcripción tardó demasiado. Intenta de nuevo o graba un audio más corto.'
+          : err?.message || 'revisa tu conexión e intenta de nuevo';
+      setErrorMessage(`Error al transcribir: ${msg}`);
     } finally {
       setIsTranscribing(false);
+    }
+  };
+
+  const handleRetryAction = () => {
+    if (lastAudioRef.current && !permissionDenied) {
+      processAudioWithGemini(lastAudioRef.current.blob, lastAudioRef.current.mimeType);
+    } else {
+      handleStartRecording();
     }
   };
 
@@ -244,16 +313,36 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({
           Graba tu ejercicio o duda técnica. Gemini transcribirá tu voz en español para que puedas revisarla y editarla.
         </p>
 
-        {/* Error banner (e.g. mic permission denied) */}
-        {errorMessage && (
-          <div className="w-full mt-3 p-3 bg-[#FDC2B1]/60 dark:bg-[#4A2530]/60 border border-[#FA8989] dark:border-[#8A3A4A] rounded-2xl flex items-start gap-2.5 text-left text-xs text-[#941C2F] dark:text-[#FF9FAE]">
+        {/* Auto-stop 60s notice */}
+        {autoStopNotice && !errorMessage && (
+          <div className="w-full mt-3 p-2.5 bg-[#FFFBD9] dark:bg-[#16241A] border border-[#ADCA88] dark:border-[#3C5A40] rounded-2xl flex items-start gap-2 text-left text-xs text-[#546C37] dark:text-[#CFE3A8]">
             <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-[#941C2F] dark:text-[#FF9FAE]" />
-            <div className="flex-1">
-              <span className="font-bold">
-                {permissionDenied ? 'Permiso Requerido: ' : 'Aviso: '}
-              </span>
-              {errorMessage}
+            <span>{autoStopNotice}</span>
+          </div>
+        )}
+
+        {/* Error banner (e.g. mic permission denied or transcription failed) */}
+        {errorMessage && (
+          <div className="w-full mt-3 p-3 bg-[#FDC2B1]/60 dark:bg-[#4A2530]/60 border border-[#FA8989] dark:border-[#8A3A4A] rounded-2xl flex items-start justify-between gap-2.5 text-left text-xs text-[#941C2F] dark:text-[#FF9FAE]">
+            <div className="flex items-start gap-2 flex-1">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-[#941C2F] dark:text-[#FF9FAE]" />
+              <div className="flex-1">
+                <span className="font-bold">
+                  {permissionDenied ? 'Permiso Requerido: ' : 'Aviso: '}
+                </span>
+                {errorMessage}
+              </div>
             </div>
+            {!isRecording && !isTranscribing && (
+              <button
+                type="button"
+                onClick={handleRetryAction}
+                className="shrink-0 py-1 px-2.5 bg-[#941C2F] dark:bg-[#C0334A] hover:bg-[#941C2F]/90 dark:hover:bg-[#C0334A]/90 text-white rounded-lg text-[10px] font-bold flex items-center gap-1 transition-all active:scale-95 cursor-pointer"
+              >
+                <RefreshCw className="w-3 h-3" />
+                <span>Reintentar</span>
+              </button>
+            )}
           </div>
         )}
 
@@ -298,12 +387,12 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({
             {isRecording ? (
               <div className="flex items-center gap-2 text-xs font-mono font-bold text-[#941C2F] dark:text-[#FF9FAE]">
                 <span className="w-2.5 h-2.5 rounded-full bg-[#941C2F] dark:bg-[#C0334A] animate-pulse"></span>
-                <span>Grabando: {formatSeconds(recordingSeconds)} (clic para parar)</span>
+                <span>Grabando… {formatSeconds(recordingSeconds)} / 1:00 (clic para parar)</span>
               </div>
             ) : isTranscribing ? (
               <div className="flex items-center gap-2 text-xs font-mono font-bold text-[#546C37] dark:text-[#CFE3A8]">
                 <Sparkles className="w-3.5 h-3.5 animate-spin text-[#941C2F] dark:text-[#FF9FAE]" />
-                <span>Transcribiendo audio con Gemini...</span>
+                <span>Transcribiendo…</span>
               </div>
             ) : (
               <span className="text-xs text-[#546C37]/80 dark:text-[#CFE3A8]/80 font-medium">

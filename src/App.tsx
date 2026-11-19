@@ -28,6 +28,7 @@ import {
 } from './firebase';
 import { Home, MessageSquare, Activity, BookOpen } from 'lucide-react';
 import { useTheme } from './hooks/useTheme';
+import { userAskedForDiagram } from './utils/diagramUrl';
 
 type AuthStatus = 'loading' | 'signedOut' | 'guest' | 'google' | 'verifyEmail';
 
@@ -423,7 +424,7 @@ export default function App() {
           timestamp: botTime,
           createdAt: botCreatedAt,
           ...(data.diagramPrompt !== undefined ? { diagramPrompt: data.diagramPrompt } : {}),
-          diagramLoading: Boolean(data.diagramPrompt),
+          diagramLoading: Boolean(data.diagramPrompt) && userAskedForDiagram(text),
         };
 
         let nextMessageCount = baseMessages.length + 2;
@@ -439,7 +440,7 @@ export default function App() {
         saveMessageToStorage(targetSessionId, botMsg).catch(() => {});
 
         // Diagram fetching for vision result if proposed
-        if (data.diagramPrompt) {
+        if (data.diagramPrompt && userAskedForDiagram(text)) {
           triggerDiagramGeneration(botMsg.id, data.diagramPrompt, botMsg);
         }
 
@@ -558,7 +559,7 @@ export default function App() {
                   timestamp: botTime,
                   createdAt: botCreatedAt,
                   ...(eventData.diagramPrompt !== undefined ? { diagramPrompt: eventData.diagramPrompt } : {}),
-                  diagramLoading: Boolean(eventData.diagramPrompt),
+                  diagramLoading: Boolean(eventData.diagramPrompt) && userAskedForDiagram(text),
                 };
 
                 let nextMessageCount = baseMessages.length + 2;
@@ -582,7 +583,7 @@ export default function App() {
                 saveMessageToStorage(targetSessionId, finalBotMsg).catch(() => {});
 
                 // If diagram prompt was generated, call /api/diagram
-                if (eventData.diagramPrompt) {
+                if (eventData.diagramPrompt && userAskedForDiagram(text)) {
                   triggerDiagramGeneration(botId, eventData.diagramPrompt, finalBotMsg);
                 }
 
@@ -636,6 +637,7 @@ export default function App() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ prompt: diagramPrompt }),
+      signal: AbortSignal.timeout(30000),
     })
       .then(async (diagramRes) => {
         if (!diagramRes.ok) {
@@ -800,6 +802,7 @@ export default function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt: diagramPrompt }),
+        signal: AbortSignal.timeout(30000),
       });
       if (!res.ok) {
         const errBody = await res.json().catch(() => ({}));
@@ -903,13 +906,156 @@ export default function App() {
     await handleSendMessage(prompt, undefined, newSessionId, []);
   };
 
-  const handleSolveWithScanner = async (data: { prompt: string; imageBase64: string; userNote?: string }) => {
-    const title = data.userNote && data.userNote.trim()
-      ? `Escaneo: ${data.userNote.slice(0, 24)}...`
-      : 'Ejercicio Escaneado';
-    const newSessionId = handleCreateNewSession(title);
+  const handleSolveWithScanner = async (data: {
+    prompt: string;
+    imageBase64: string;
+    thumbnailBase64?: string;
+    userNote?: string;
+  }) => {
+    const title =
+      data.userNote && data.userNote.trim()
+        ? `Escaneo: ${data.userNote.slice(0, 24)}...`
+        : 'Ejercicio Escaneado';
+
+    const newSessionId = `session-${Date.now()}`;
+    const nowIso = new Date().toISOString();
+    const timeString = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    const newSession: ChatSession = {
+      id: newSessionId,
+      title,
+      topic: 'ELECTROSTATICA • Consulta',
+      moduleId: 'electrostatica',
+      createdAt: nowIso,
+      updatedAt: nowIso,
+      messageCount: 1,
+      lastMessage: data.prompt.slice(0, 70) + '...',
+    };
+
+    const userMsg: ChatMessage = {
+      id: `usr-${Date.now()}`,
+      sessionId: newSessionId,
+      sender: 'user',
+      text: data.prompt,
+      // Store only the ~200px thumbnail in persistent state/storage; never store full 1280px base64
+      ...(data.thumbnailBase64 ? { imageUrl: data.thumbnailBase64 } : { imageNote: 'Imagen adjunta: ejercicio escaneado' }),
+      timestamp: timeString,
+      createdAt: nowIso,
+    };
+
+    // Update UI immediately without waiting for Firestore
+    sessionsRef.current = [newSession, ...sessionsRef.current];
+    setSessions(sessionsRef.current);
+    currentSessionIdRef.current = newSessionId;
+    setCurrentSessionId(newSessionId);
+    messagesRef.current = [userMsg];
+    setMessages([userMsg]);
     setActiveTab('chat');
-    await handleSendMessage(data.prompt, data.imageBase64, newSessionId, [], true);
+    setIsLoading(true);
+
+    // Persist session and user message in parallel without blocking /api/vision
+    Promise.allSettled([
+      saveSessionToStorage(newSession),
+      saveMessageToStorage(newSessionId, userMsg),
+    ]);
+
+    try {
+      const res = await fetch('/api/vision', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: data.prompt,
+          imageBase64: data.imageBase64,
+          imageMimeType: data.imageBase64.startsWith('data:image/png') ? 'image/png' : 'image/jpeg',
+        }),
+        signal: AbortSignal.timeout(35000),
+      });
+
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.error || `Error ${res.status} en análisis visual`);
+      }
+
+      const resData = await res.json();
+      const botTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const botCreatedAt = new Date(
+        Math.max(Date.now(), Date.parse(nowIso) + 1)
+      ).toISOString();
+      const shouldAutoGenerateDiagram =
+        Boolean(resData.diagramPrompt) && userAskedForDiagram(data.prompt);
+
+      const botMsg: ChatMessage = {
+        id: `bot-${Date.now()}`,
+        sessionId: newSessionId,
+        sender: 'bot',
+        text: resData.text,
+        quickChips: resData.quickChips || [],
+        ...(resData.simulationType !== undefined ? { simulationType: resData.simulationType } : {}),
+        ...(resData.simulationParams !== undefined ? { simulationParams: resData.simulationParams } : {}),
+        ...(resData.simulationAdjusted !== undefined ? { simulationAdjusted: resData.simulationAdjusted } : {}),
+        timestamp: botTime,
+        createdAt: botCreatedAt,
+        ...(resData.diagramPrompt !== undefined ? { diagramPrompt: resData.diagramPrompt } : {}),
+        diagramLoading: shouldAutoGenerateDiagram,
+      };
+
+      const updatedSession: ChatSession = {
+        ...newSession,
+        updatedAt: new Date().toISOString(),
+        messageCount: 2,
+        lastMessage: resData.text.slice(0, 70) + '...',
+      };
+      sessionsRef.current = sessionsRef.current.map((s) =>
+        s.id === newSessionId ? updatedSession : s
+      );
+      setSessions(sessionsRef.current);
+
+      if (currentSessionIdRef.current === newSessionId) {
+        const clean = messagesRef.current.filter((m) => !m.isError && m.sessionId === newSessionId);
+        const next = clean.some((m) => m.id === userMsg.id)
+          ? [...clean, botMsg]
+          : [userMsg, botMsg];
+        messagesRef.current = next;
+        setMessages(next);
+      }
+
+      // Persist bot message and updated session header in parallel
+      Promise.allSettled([
+        saveMessageToStorage(newSessionId, botMsg),
+        saveSessionToStorage(updatedSession),
+      ]);
+
+      if (shouldAutoGenerateDiagram && resData.diagramPrompt) {
+        triggerDiagramGeneration(botMsg.id, resData.diagramPrompt, botMsg);
+      }
+    } catch (err: any) {
+      console.error('Error analyzing scanned image:', err);
+      const errorTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const errorMsg: ChatMessage = {
+        id: `bot-err-${Date.now()}`,
+        sessionId: newSessionId,
+        sender: 'bot',
+        text:
+          err?.name === 'TimeoutError'
+            ? 'El análisis de la imagen tardó demasiado. Pulsa Reintentar.'
+            : 'No pude analizar la imagen. Revisa tu conexión e inténtalo de nuevo.',
+        isError: true,
+        retryPrompt: data.prompt,
+        retryImageBase64: data.imageBase64,
+        timestamp: errorTime,
+        createdAt: new Date(Math.max(Date.now(), Date.parse(nowIso) + 1)).toISOString(),
+      };
+      if (currentSessionIdRef.current === newSessionId) {
+        const clean = messagesRef.current.filter((m) => !m.isError && m.sessionId === newSessionId);
+        const next = clean.some((m) => m.id === userMsg.id)
+          ? [...clean, errorMsg]
+          : [userMsg, errorMsg];
+        messagesRef.current = next;
+        setMessages(next);
+      }
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleVoiceSubmit = async (prompt: string) => {

@@ -1,10 +1,10 @@
 import React, { useState, useRef } from 'react';
-import { X, Camera, Upload, Trash2, Sparkles, FileText, Cpu, AlertCircle, Loader2 } from 'lucide-react';
+import { X, Camera, Upload, Trash2, Sparkles, FileText, Cpu, AlertCircle, Loader2, RefreshCw } from 'lucide-react';
 
 interface ScannerModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSolveWithAI: (data: { prompt: string; imageBase64: string; userNote?: string }) => void;
+  onSolveWithAI: (data: { prompt: string; imageBase64: string; thumbnailBase64?: string; userNote?: string }) => void;
 }
 
 interface ImageStats {
@@ -14,72 +14,146 @@ interface ImageStats {
   compressedSizeKb: number;
 }
 
-/**
- * Compresses an image in the browser using HTMLCanvasElement.
- * Scales down to a maximum dimension of 1600px and exports as JPEG quality 0.8.
- */
-async function compressImage(file: File, maxDimension = 1600, quality = 0.8): Promise<{ dataUrl: string; stats: ImageStats }> {
-  return new Promise((resolve, reject) => {
-    const originalSizeKb = Math.round(file.size / 1024);
-    const reader = new FileReader();
-
-    reader.onerror = () => reject(new Error('No se pudo leer el archivo seleccionado.'));
-
-    reader.onload = (e) => {
-      const img = new Image();
-      img.onerror = () => reject(new Error('El archivo no es una imagen válida o compatible.'));
-
-      img.onload = () => {
-        let { width, height } = img;
-        if (width > maxDimension || height > maxDimension) {
-          if (width > height) {
-            height = Math.round((height * maxDimension) / width);
-            width = maxDimension;
-          } else {
-            width = Math.round((width * maxDimension) / height);
-            height = maxDimension;
-          }
-        }
-
-        const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
-
-        const ctx = canvas.getContext('2d');
-        if (!ctx) {
-          const fallbackData = e.target?.result as string;
-          resolve({
-            dataUrl: fallbackData,
-            stats: { width, height, originalSizeKb, compressedSizeKb: originalSizeKb },
-          });
-          return;
-        }
-
-        ctx.imageSmoothingEnabled = true;
-        ctx.imageSmoothingQuality = 'high';
-        ctx.drawImage(img, 0, 0, width, height);
-
-        const dataUrl = canvas.toDataURL('image/jpeg', quality);
-        const head = 'data:image/jpeg;base64,';
-        const rawBase64 = dataUrl.slice(head.length);
-        const compressedSizeKb = Math.round((rawBase64.length * 3) / 4 / 1024);
-
-        resolve({
-          dataUrl,
-          stats: { width, height, originalSizeKb, compressedSizeKb },
-        });
-      };
-
-      img.src = e.target?.result as string;
-    };
-
-    reader.readAsDataURL(file);
+async function canvasToJpegDataUrl(canvas: HTMLCanvasElement, quality: number): Promise<string> {
+  const blob = await new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob(
+      (b) => {
+        if (b) resolve(b);
+        else reject(new Error('No se pudo codificar la imagen comprimida.'));
+      },
+      'image/jpeg',
+      quality
+    );
   });
+
+  return await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      if (typeof reader.result === 'string') resolve(reader.result);
+      else reject(new Error('No se pudo leer la imagen comprimida.'));
+    };
+    reader.onerror = () => reject(new Error('Error leyendo la imagen comprimida.'));
+    reader.readAsDataURL(blob);
+  });
+}
+
+function drawScaledBitmap(
+  source: ImageBitmap | HTMLImageElement,
+  srcWidth: number,
+  srcHeight: number,
+  maxDimension: number
+): { canvas: HTMLCanvasElement; width: number; height: number } {
+  let width = srcWidth;
+  let height = srcHeight;
+  if (width > maxDimension || height > maxDimension) {
+    if (width > height) {
+      height = Math.max(1, Math.round((height * maxDimension) / width));
+      width = maxDimension;
+    } else {
+      width = Math.max(1, Math.round((width * maxDimension) / height));
+      height = maxDimension;
+    }
+  }
+
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+
+  const ctx = canvas.getContext('2d');
+  if (!ctx) {
+    throw new Error('No se pudo inicializar el lienzo para procesar la imagen.');
+  }
+
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(source, 0, 0, width, height);
+
+  return { canvas, width, height };
+}
+
+/**
+ * Compresses an image asynchronously using createImageBitmap (fallback to HTMLImageElement).
+ * Scales down to max 1280px JPEG quality 0.75, plus generates a ~200px thumbnail for storage.
+ */
+async function compressImage(
+  file: File,
+  maxDimension = 1280,
+  quality = 0.75
+): Promise<{ dataUrl: string; thumbnailDataUrl: string; stats: ImageStats }> {
+  const originalSizeKb = Math.round(file.size / 1024);
+  let bitmap: ImageBitmap | null = null;
+  let objectUrl: string | null = null;
+
+  try {
+    let source: ImageBitmap | HTMLImageElement;
+    let srcWidth: number;
+    let srcHeight: number;
+
+    if (typeof createImageBitmap === 'function') {
+      try {
+        bitmap = await createImageBitmap(file);
+        source = bitmap;
+        srcWidth = bitmap.width;
+        srcHeight = bitmap.height;
+      } catch {
+        objectUrl = URL.createObjectURL(file);
+        const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+          const el = new Image();
+          el.onload = () => resolve(el);
+          el.onerror = () => reject(new Error('El archivo no es una imagen válida o compatible.'));
+          el.src = objectUrl!;
+        });
+        source = img;
+        srcWidth = img.naturalWidth || img.width;
+        srcHeight = img.naturalHeight || img.height;
+      }
+    } else {
+      objectUrl = URL.createObjectURL(file);
+      const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const el = new Image();
+        el.onload = () => resolve(el);
+        el.onerror = () => reject(new Error('El archivo no es una imagen válida o compatible.'));
+        el.src = objectUrl!;
+      });
+      source = img;
+      srcWidth = img.naturalWidth || img.width;
+      srcHeight = img.naturalHeight || img.height;
+    }
+
+    const main = drawScaledBitmap(source, srcWidth, srcHeight, maxDimension);
+    const thumb = drawScaledBitmap(source, srcWidth, srcHeight, 200);
+
+    const [dataUrl, thumbnailDataUrl] = await Promise.all([
+      canvasToJpegDataUrl(main.canvas, quality),
+      canvasToJpegDataUrl(thumb.canvas, 0.65),
+    ]);
+
+    const head = 'data:image/jpeg;base64,';
+    const rawBase64 = dataUrl.startsWith(head) ? dataUrl.slice(head.length) : dataUrl;
+    const compressedSizeKb = Math.round((rawBase64.length * 3) / 4 / 1024);
+
+    return {
+      dataUrl,
+      thumbnailDataUrl,
+      stats: {
+        width: main.width,
+        height: main.height,
+        originalSizeKb,
+        compressedSizeKb,
+      },
+    };
+  } finally {
+    bitmap?.close();
+    if (objectUrl) {
+      URL.revokeObjectURL(objectUrl);
+    }
+  }
 }
 
 export const ScannerModal: React.FC<ScannerModalProps> = ({ isOpen, onClose, onSolveWithAI }) => {
   const [activeMode, setActiveMode] = useState<'formula' | 'diagram' | 'page'>('diagram');
   const [customImage, setCustomImage] = useState<string | null>(null);
+  const [thumbnailImage, setThumbnailImage] = useState<string | null>(null);
   const [imageStats, setImageStats] = useState<ImageStats | null>(null);
   const [userNote, setUserNote] = useState<string>('');
   const [isCompressing, setIsCompressing] = useState<boolean>(false);
@@ -87,8 +161,51 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({ isOpen, onClose, onS
 
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const uploadInputRef = useRef<HTMLInputElement>(null);
+  const lastActionRef = useRef<'camera' | 'upload'>('camera');
 
   if (!isOpen) return null;
+
+  const handleOpenCamera = async () => {
+    lastActionRef.current = 'camera';
+    setErrorMessage(null);
+
+    if (!window.isSecureContext) {
+      setErrorMessage(
+        'La cámara requiere conexión segura (HTTPS). Para activarla, abre la app en HTTPS o usa "Subir imagen" para elegir una foto de tu galería.'
+      );
+      return;
+    }
+
+    try {
+      if (navigator.permissions && typeof navigator.permissions.query === 'function') {
+        const status = await navigator.permissions.query({ name: 'camera' as PermissionName });
+        if (status.state === 'denied') {
+          setErrorMessage(
+            'Permiso de cámara denegado. Para activarla: toca el ícono de candado o configuración en la barra de direcciones de tu navegador, habilita "Cámara" y pulsa Reintentar (o usa "Subir imagen").'
+          );
+          return;
+        }
+      }
+    } catch {
+      // Some browsers do not support permissions.query for camera; proceed to file capture
+    }
+
+    cameraInputRef.current?.click();
+  };
+
+  const handleOpenUpload = () => {
+    lastActionRef.current = 'upload';
+    setErrorMessage(null);
+    uploadInputRef.current?.click();
+  };
+
+  const handleRetryAction = () => {
+    if (lastActionRef.current === 'camera') {
+      handleOpenCamera();
+    } else {
+      handleOpenUpload();
+    }
+  };
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -97,6 +214,8 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({ isOpen, onClose, onS
     // Reject non-image files
     if (!file.type.startsWith('image/')) {
       setErrorMessage('Por favor selecciona un archivo de imagen válido (JPG, PNG, WebP).');
+      if (cameraInputRef.current) cameraInputRef.current.value = '';
+      if (uploadInputRef.current) uploadInputRef.current.value = '';
       return;
     }
 
@@ -104,8 +223,9 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({ isOpen, onClose, onS
     setErrorMessage(null);
 
     try {
-      const { dataUrl, stats } = await compressImage(file, 1600, 0.8);
+      const { dataUrl, thumbnailDataUrl, stats } = await compressImage(file, 1280, 0.75);
       setCustomImage(dataUrl);
+      setThumbnailImage(thumbnailDataUrl);
       setImageStats(stats);
     } catch (err: any) {
       console.error('Error al procesar y comprimir imagen:', err);
@@ -120,6 +240,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({ isOpen, onClose, onS
 
   const handleClearImage = () => {
     setCustomImage(null);
+    setThumbnailImage(null);
     setImageStats(null);
     setErrorMessage(null);
   };
@@ -139,6 +260,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({ isOpen, onClose, onS
     onSolveWithAI({
       prompt,
       imageBase64: customImage,
+      thumbnailBase64: thumbnailImage || undefined,
       userNote: userNote.trim() || undefined,
     });
     onClose();
@@ -173,11 +295,21 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({ isOpen, onClose, onS
 
         {/* Scrollable Content */}
         <div className="overflow-y-auto py-3 space-y-3 flex-1 pr-1">
-          {/* Error notice if compression or format failed */}
+          {/* Error notice if compression, permissions or format failed */}
           {errorMessage && (
-            <div className="bg-[#FFF2EE] dark:bg-[#3A1820] border border-[#FA8989] dark:border-[#8A3A4A] text-[#941C2F] dark:text-[#FF9FAE] p-3 rounded-2xl text-xs flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 shrink-0" />
-              <span>{errorMessage}</span>
+            <div className="bg-[#FFF2EE] dark:bg-[#3A1820] border border-[#FA8989] dark:border-[#8A3A4A] text-[#941C2F] dark:text-[#FF9FAE] p-3 rounded-2xl text-xs flex items-start justify-between gap-2.5">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>{errorMessage}</span>
+              </div>
+              <button
+                type="button"
+                onClick={handleRetryAction}
+                className="shrink-0 py-1 px-2.5 bg-[#941C2F] dark:bg-[#C0334A] hover:bg-[#941C2F]/90 dark:hover:bg-[#C0334A]/90 text-white rounded-lg text-[10px] font-bold flex items-center gap-1 transition-all active:scale-95 cursor-pointer"
+              >
+                <RefreshCw className="w-3 h-3" />
+                <span>Reintentar</span>
+              </button>
             </div>
           )}
 
@@ -205,7 +337,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({ isOpen, onClose, onS
               {isCompressing ? (
                 <div className="flex flex-col items-center justify-center text-[#D6E3B1] space-y-2">
                   <Loader2 className="w-8 h-8 animate-spin text-[#FA8989]" />
-                  <span className="text-xs font-mono">Optimizando y comprimiendo imagen...</span>
+                  <span className="text-xs font-mono">Procesando imagen…</span>
                 </div>
               ) : customImage ? (
                 <img
@@ -238,7 +370,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({ isOpen, onClose, onS
             <div className="text-center text-[10px] font-mono text-[#ADCA88]/90 z-10 bg-black/60 py-1 px-2 rounded-lg truncate">
               {customImage && imageStats ? (
                 <span>
-                  ✓ Imagen lista: {imageStats.width}×{imageStats.height}px • {imageStats.compressedSizeKb} KB (JPEG 0.8)
+                  ✓ Imagen lista: {imageStats.width}×{imageStats.height}px • {imageStats.compressedSizeKb} KB (JPEG 0.75)
                 </span>
               ) : (
                 <span>ESPERANDO CAPTURA • ENFOCA CIRCUITOS, DIAGRAMAS O FÓRMULAS</span>
@@ -331,7 +463,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({ isOpen, onClose, onS
             {/* Tomar Foto Button */}
             <button
               type="button"
-              onClick={() => cameraInputRef.current?.click()}
+              onClick={handleOpenCamera}
               className="py-2.5 px-3 bg-[#FA8989]/20 hover:bg-[#FA8989]/30 text-[#941C2F] dark:text-[#FF9FAE] border border-[#FA8989] dark:border-[#8A3A4A] rounded-2xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-xs active:scale-95 cursor-pointer"
             >
               <Camera className="w-4 h-4 text-[#941C2F] dark:text-[#FF9FAE]" />
@@ -341,7 +473,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({ isOpen, onClose, onS
             {/* Subir Imagen Button */}
             <button
               type="button"
-              onClick={() => uploadInputRef.current?.click()}
+              onClick={handleOpenUpload}
               className="py-2.5 px-3 bg-white dark:bg-[#16241A] hover:bg-[#FFFBD9] dark:hover:bg-[#0F1A0F] text-[#546C37] dark:text-[#CFE3A8] border border-[#ADCA88] dark:border-[#3C5A40] rounded-2xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-xs active:scale-95 cursor-pointer"
             >
               <Upload className="w-4 h-4 text-[#546C37] dark:text-[#CFE3A8]" />

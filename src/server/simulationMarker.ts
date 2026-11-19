@@ -8,15 +8,13 @@ const STRICT_NUMBER_RE = /^[+-]?\d+(\.\d+)?([eE][+-]?\d+)?$/;
 
 const ACCEPTED_PASS_THROUGH_IDS: ReadonlySet<SimulationType> = new Set<SimulationType>([
   'conductor_gauss',
-  'circuito_rc',
-  'diodo_iv',
 ]);
 
 function isParameterizedId(id: string): id is ParameterizedSimulationId {
   return id === 'coulomb' || id === 'ohm';
 }
 
-function isAcceptedPassThroughId(id: string): id is 'conductor_gauss' | 'circuito_rc' | 'diodo_iv' {
+function isAcceptedPassThroughId(id: string): id is 'conductor_gauss' {
   return ACCEPTED_PASS_THROUGH_IDS.has(id as SimulationType);
 }
 

@@ -14,7 +14,7 @@ export interface CourseModule {
   sampleQuestions: string[];
 }
 
-export type SimulationType = 'conductor_gauss' | 'circuito_rc' | 'diodo_iv' | 'coulomb' | 'ohm';
+export type SimulationType = 'conductor_gauss' | 'coulomb' | 'ohm';
 
 export type SimulationParams = Record<string, number>;
 

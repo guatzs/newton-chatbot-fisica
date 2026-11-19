@@ -161,3 +161,32 @@
   }
 }
 
+/* Custom Theme Scrollbar */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #ADCA88 #FFFBD9;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #FFFBD9;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: #ADCA88;
+  border-radius: 9999px;
+  border: 2px solid #FFFBD9;
+}
+
+::-webkit-scrollbar-thumb:hover,
+::-webkit-scrollbar-thumb:active {
+  background-color: #546C37;
+}
+
+::-webkit-scrollbar-corner {
+  background: #FFFBD9;
+}

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
@@ -6,8 +6,6 @@ import { NewtonMascot } from './NewtonMascot';
 import { ChatMessage, ChatSession, CourseModuleId } from '../types';
 import { COURSE_MODULES } from '../data/syllabus';
 import { SphericalConductorSim } from './simulators/SphericalConductorSim';
-import { RcCircuitSim } from './simulators/RcCircuitSim';
-import { DiodeIvSim } from './simulators/DiodeIvSim';
 import { CoulombSim } from './simulators/CoulombSim';
 import { OhmSim } from './simulators/OhmSim';
 import { SpeechService } from '../utils/speech';
@@ -27,6 +25,85 @@ import {
   MessageSquare,
   X
 } from 'lucide-react';
+
+const DIAGRAM_LOAD_TIMEOUT_MS = 60000;
+
+function withNewSeed(url: string): string {
+  const seed = Math.floor(Math.random() * 1000000);
+  if (/[?&]seed=\d+/.test(url)) return url.replace(/([?&]seed=)\d+/, `$1${seed}`);
+  return `${url}${url.includes('?') ? '&' : '?'}seed=${seed}`;
+}
+
+function DiagramImage({ url, onRetry }: { url: string; onRetry?: () => void }) {
+  const [src, setSrc] = useState(url);
+  const [status, setStatus] = useState<'loading' | 'loaded' | 'error'>('loading');
+  const [autoRetried, setAutoRetried] = useState(false);
+
+  useEffect(() => {
+    setSrc(url);
+    setStatus('loading');
+    setAutoRetried(false);
+  }, [url]);
+
+  const handleFail = useCallback(() => {
+    if (!autoRetried && url.includes('pollinations.ai')) {
+      setAutoRetried(true);
+      setSrc(withNewSeed(url));
+      setStatus('loading');
+    } else {
+      setStatus('error');
+    }
+  }, [autoRetried, url]);
+
+  useEffect(() => {
+    if (status !== 'loading') return;
+    const timer = window.setTimeout(handleFail, DIAGRAM_LOAD_TIMEOUT_MS);
+    return () => window.clearTimeout(timer);
+  }, [status, src, handleFail]);
+
+  if (status === 'error') {
+    return (
+      <div className="w-full p-3 flex items-start justify-between gap-2.5 text-xs text-[#941C2F] dark:text-[#FF9FAE]">
+        <div className="flex items-start gap-2">
+          <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+          <span className="text-[11px] font-['Space_Grotesk'] text-[#3D121A]/85 dark:text-[#FBE9E4]/85">
+            La imagen del diagrama no cargó: el servicio de imágenes no respondió o tardó demasiado.
+          </span>
+        </div>
+        {onRetry && (
+          <button
+            onClick={onRetry}
+            className="shrink-0 py-1 px-2.5 bg-[#941C2F] dark:bg-[#C0334A] hover:bg-[#941C2F]/90 dark:hover:bg-[#C0334A]/90 text-white rounded-lg text-[10px] font-bold flex items-center gap-1 transition-all active:scale-95 cursor-pointer"
+          >
+            <RefreshCw className="w-3 h-3" />
+            <span>Reintentar</span>
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative w-full min-h-[120px] flex items-center justify-center">
+      {status === 'loading' && (
+        <div className="absolute inset-0 flex items-center justify-center gap-2 text-[11px] font-mono text-[#546C37] dark:text-[#CFE3A8]">
+          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+          <span>Cargando diagrama...</span>
+        </div>
+      )}
+      <img
+        key={src}
+        src={src}
+        alt="Diagrama físico generado por Newton AI"
+        onLoad={() => setStatus('loaded')}
+        onError={handleFail}
+        className={`w-full h-auto max-h-[400px] object-contain rounded-xl transition-opacity ${
+          status === 'loaded' ? 'opacity-100' : 'opacity-0'
+        }`}
+      />
+    </div>
+  );
+}
 
 interface ChatViewProps {
   messages: ChatMessage[];
@@ -64,6 +141,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
   hasGuestBanner = false,
 }) => {
   const [inputText, setInputText] = useState('');
+  const [attachedImage, setAttachedImage] = useState<string | null>(null);
   const [speakingMessageId, setSpeakingMessageId] = useState<string | null>(null);
   const [isMobileHistoryOpen, setIsMobileHistoryOpen] = useState(false);
   const [sessionPendingDelete, setSessionPendingDelete] = useState<string | null>(null);
@@ -80,10 +158,72 @@ export const ChatView: React.FC<ChatViewProps> = ({
 
   const handleSend = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!inputText.trim() || isLoading || loadingMessages) return;
-    const text = inputText.trim();
+    if ((!inputText.trim() && !attachedImage) || isLoading || loadingMessages) return;
+    const text = inputText.trim() || 'Analiza esta imagen adjunta.';
+    const imageToSend = attachedImage || undefined;
     setInputText('');
-    await onSendMessage(text);
+    setAttachedImage(null);
+    await onSendMessage(text, imageToSend);
+  };
+
+  const handleSendChip = async (promptText: string) => {
+    if (isLoading || loadingMessages) return;
+    const imageToSend = attachedImage || undefined;
+    setAttachedImage(null);
+    await onSendMessage(promptText, imageToSend);
+  };
+
+  const handleInputPaste = async (e: React.ClipboardEvent<HTMLInputElement>) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (const item of Array.from(items)) {
+      if (item.type.startsWith('image/')) {
+        const file = item.getAsFile();
+        if (!file) continue;
+        e.preventDefault();
+        let bitmap: ImageBitmap | null = null;
+        try {
+          bitmap = await createImageBitmap(file);
+          let { width, height } = bitmap;
+          const maxDim = 1280;
+          if (width > maxDim || height > maxDim) {
+            if (width > height) {
+              height = Math.max(1, Math.round((height * maxDim) / width));
+              width = maxDim;
+            } else {
+              width = Math.max(1, Math.round((width * maxDim) / height));
+              height = maxDim;
+            }
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
+            ctx.drawImage(bitmap, 0, 0, width, height);
+            const blob = await new Promise<Blob | null>((resolve) =>
+              canvas.toBlob((b) => resolve(b), 'image/jpeg', 0.75)
+            );
+            if (blob) {
+              const dataUrl = await new Promise<string>((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result as string);
+                reader.onerror = reject;
+                reader.readAsDataURL(blob);
+              });
+              setAttachedImage(dataUrl);
+            }
+          }
+        } catch {
+          // Ignore paste decode errors
+        } finally {
+          bitmap?.close();
+        }
+        break;
+      }
+    }
   };
 
   const handleToggleSpeech = (msgId: string, text: string) => {
@@ -217,11 +357,11 @@ export const ChatView: React.FC<ChatViewProps> = ({
   );
 
   return (
-    <div className={`flex-1 flex flex-col ${
-      hasGuestBanner 
-        ? 'h-[calc(100dvh-65px-64px-32px)] md:h-[calc(100dvh-65px-32px)]' 
-        : 'h-[calc(100dvh-65px-64px)] md:h-[calc(100dvh-65px)]'
-    } max-w-7xl mx-auto w-full px-2 sm:px-4 py-2 sm:py-3 overflow-hidden`}>
+    <div
+      className={`flex-1 flex flex-col min-h-0 ${
+        hasGuestBanner ? 'h-[calc(100dvh-97px)]' : 'h-[calc(100dvh-65px)]'
+      } max-w-7xl mx-auto w-full px-2 sm:px-4 pt-2 sm:pt-3 pb-16 md:pb-3 overflow-hidden`}
+    >
       {/* Top Session Sub-Header Card (matching ChatActivoMovil.png & DesktopIDE.png) */}
       <div className="bg-[#FFFBD9]/95 dark:bg-[#0F1A0F]/95 backdrop-blur-md rounded-2xl p-3 border border-[#ADCA88]/50 dark:border-[#3C5A40]/50 shadow-xs flex items-center justify-between gap-3 mb-3 shrink-0">
         <div className="flex items-center gap-2.5 min-w-0">
@@ -273,9 +413,9 @@ export const ChatView: React.FC<ChatViewProps> = ({
       <div className="flex-1 flex gap-4 min-h-0 overflow-hidden relative">
 
         {/* Central Chat Stream */}
-        <div className="flex-1 flex flex-col bg-[#FFFBD9]/50 dark:bg-[#0F1A0F]/50 rounded-3xl border border-[#ADCA88]/40 dark:border-[#3C5A40]/40 shadow-xs overflow-hidden">
+        <div className="flex-1 flex flex-col min-h-0 bg-[#FFFBD9]/50 dark:bg-[#0F1A0F]/50 rounded-3xl border border-[#ADCA88]/40 dark:border-[#3C5A40]/40 shadow-xs overflow-hidden">
           {/* Scrollable Message List */}
-          <div className="flex-1 overflow-y-auto p-3 sm:p-5 space-y-4">
+          <div className="flex-1 min-h-0 overflow-y-auto p-3 sm:p-5 space-y-4">
             {messages.length === 0 && (
               <div className="flex flex-col items-center justify-center py-6 px-3 text-center max-w-lg mx-auto space-y-4 animate-in fade-in duration-300">
                 <NewtonMascot size={88} mood="happy" animated />
@@ -304,7 +444,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                     ].map((q, idx) => (
                       <button
                         key={idx}
-                        onClick={() => onSendMessage(q)}
+                        onClick={() => handleSendChip(q)}
                         className="bg-white/90 dark:bg-[#16241A]/90 hover:bg-[#FFFBD9] dark:hover:bg-[#0F1A0F] text-[#546C37] dark:text-[#CFE3A8] text-xs font-medium p-2.5 rounded-2xl border border-[#ADCA88] dark:border-[#3C5A40] transition-all shadow-xs text-left flex items-center justify-between group active:scale-[0.99] cursor-pointer"
                       >
                         <span>→ {q}</span>
@@ -431,17 +571,36 @@ export const ChatView: React.FC<ChatViewProps> = ({
                           </a>
                         </div>
                         <div className="p-2 bg-white dark:bg-[#16241A] flex items-center justify-center">
-                          <img
-                            src={msg.diagramUrl}
-                            alt="Diagrama físico generado por Newton AI"
-                            className="w-full h-auto max-h-[400px] object-contain rounded-xl"
+                          <DiagramImage
+                            url={msg.diagramUrl}
+                            onRetry={
+                              msg.diagramPrompt && onRetryDiagram
+                                ? () => onRetryDiagram(msg.id, msg.diagramPrompt!)
+                                : undefined
+                            }
                           />
                         </div>
                       </div>
                     )}
 
+                    {/* Diagram Offer: Newton propone un diagrama y el estudiante decide si lo genera */}
+                    {msg.diagramPrompt && !msg.diagramUrl && !msg.diagramLoading && !msg.diagramError && onRetryDiagram && (
+                      <div className="mt-3 p-3 rounded-2xl bg-[#FFFBD9]/90 dark:bg-[#0F1A0F]/90 border border-[#ADCA88] dark:border-[#3C5A40] flex items-center justify-between gap-2.5 text-xs text-[#546C37] dark:text-[#CFE3A8] animate-in fade-in duration-200">
+                        <span className="text-[11px] font-['Space_Grotesk']">
+                          Newton puede dibujar un diagrama de este problema. ¿Quieres verlo?
+                        </span>
+                        <button
+                          onClick={() => onRetryDiagram(msg.id, msg.diagramPrompt!)}
+                          className="shrink-0 py-1 px-2.5 bg-[#941C2F] dark:bg-[#C0334A] hover:bg-[#941C2F]/90 dark:hover:bg-[#C0334A]/90 text-white rounded-lg text-[10px] font-bold flex items-center gap-1 transition-all active:scale-95 cursor-pointer"
+                        >
+                          <Sparkles className="w-3 h-3" />
+                          <span>Generar diagrama</span>
+                        </button>
+                      </div>
+                    )}
+
                     {/* Diagram Error Notification */}
-                    {(msg.diagramError || (msg.diagramPrompt && !msg.diagramUrl && !msg.diagramLoading)) && (
+                    {msg.diagramError && (
                       <div className="mt-3 p-3 rounded-2xl bg-[#FFF2EE] dark:bg-[#3A1820] border border-[#FA8989] dark:border-[#8A3A4A] flex items-start justify-between gap-2.5 text-xs text-[#941C2F] dark:text-[#FF9FAE] animate-in fade-in duration-200">
                         <div className="flex items-start gap-2">
                           <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-[#941C2F] dark:text-[#FF9FAE]" />
@@ -488,16 +647,6 @@ export const ChatView: React.FC<ChatViewProps> = ({
                         <SphericalConductorSim compact />
                       </div>
                     )}
-                    {msg.simulationType === 'circuito_rc' && (
-                      <div className="mt-3">
-                        <RcCircuitSim />
-                      </div>
-                    )}
-                    {msg.simulationType === 'diodo_iv' && (
-                      <div className="mt-3">
-                        <DiodeIvSim />
-                      </div>
-                    )}
                     {msg.simulationType === 'coulomb' && (
                       <div className="mt-3">
                         <CoulombSim
@@ -524,7 +673,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                       {msg.quickChips.map((chip, idx) => (
                         <button
                           key={idx}
-                          onClick={() => onSendMessage(chip)}
+                          onClick={() => handleSendChip(chip)}
                           className="bg-white/90 dark:bg-[#16241A]/90 hover:bg-[#FFFBD9] dark:hover:bg-[#0F1A0F] text-[#546C37] dark:text-[#CFE3A8] text-[11px] font-medium px-3 py-1 rounded-full border border-[#ADCA88] dark:border-[#3C5A40] transition-all shadow-xs active:scale-95 text-left cursor-pointer"
                         >
                           → {chip}
@@ -555,7 +704,29 @@ export const ChatView: React.FC<ChatViewProps> = ({
           </div>
 
           {/* Floating Rounded Bottom Input Bar (strictly matching ChatActivoMovil.png) */}
-          <div className="p-2 sm:p-3 bg-white/90 dark:bg-[#16241A]/90 backdrop-blur-md border-t border-[#ADCA88]/40 dark:border-[#3C5A40]/40 shrink-0">
+          <div className="p-2 sm:p-3 pb-[calc(0.5rem+env(safe-area-inset-bottom))] bg-white/90 dark:bg-[#16241A]/90 backdrop-blur-md border-t border-[#ADCA88]/40 dark:border-[#3C5A40]/40 shrink-0">
+            {attachedImage && (
+              <div className="mb-2 flex items-center gap-2 px-2">
+                <div className="relative inline-flex items-center gap-2 p-1.5 bg-[#FFFBD9] dark:bg-[#0F1A0F] border border-[#ADCA88] dark:border-[#3C5A40] rounded-2xl">
+                  <img
+                    src={attachedImage}
+                    alt="Imagen adjunta"
+                    className="w-10 h-10 object-cover rounded-xl"
+                  />
+                  <span className="text-[11px] font-mono text-[#546C37] dark:text-[#CFE3A8] pr-1">
+                    Imagen lista
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setAttachedImage(null)}
+                    title="Quitar imagen adjunta"
+                    className="p-1 rounded-full bg-[#FDC2B1] dark:bg-[#4A2530] text-[#941C2F] dark:text-[#FF9FAE] hover:opacity-80 cursor-pointer"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              </div>
+            )}
             <form
               onSubmit={handleSend}
               className="bg-[#FFFBD9] dark:bg-[#0F1A0F] rounded-3xl p-1.5 sm:p-2 border-2 border-[#ADCA88] dark:border-[#3C5A40] shadow-sm flex items-center gap-2 focus-within:ring-2 focus-within:ring-[#546C37] dark:focus-within:ring-[#6E8F47] transition-all"
@@ -582,6 +753,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                 type="text"
                 value={inputText}
                 onChange={(e) => setInputText(e.target.value)}
+                onPaste={handleInputPaste}
                 placeholder="Pregúntale a Newton o formula una hipótesis..."
                 disabled={isLoading || loadingMessages}
                 className="flex-1 bg-transparent px-2 text-xs sm:text-sm text-[#546C37] dark:text-[#CFE3A8] placeholder-[#546C37]/50 dark:placeholder-[#CFE3A8]/50 focus:outline-none font-['Space_Grotesk']"
@@ -589,7 +761,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
 
               <button
                 type="submit"
-                disabled={!inputText.trim() || isLoading || loadingMessages}
+                disabled={(!inputText.trim() && !attachedImage) || isLoading || loadingMessages}
                 className="w-9 h-9 rounded-full bg-[#546C37] dark:bg-[#6E8F47] hover:bg-[#546C37]/90 dark:hover:bg-[#6E8F47]/90 disabled:opacity-40 text-white flex items-center justify-center transition-transform active:scale-95 shrink-0 shadow-xs cursor-pointer"
               >
                 <Send className="w-4 h-4 text-white" />
@@ -641,7 +813,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
 
                   <button
                     onClick={() =>
-                      onSendMessage(
+                      handleSendChip(
                         `Hola Newton, tengo una consulta sobre el ${mod.badge} (${mod.title}): ¿puedes explicarme los conceptos teóricos clave y resolver un problema representativo paso a paso?`
                       )
                     }

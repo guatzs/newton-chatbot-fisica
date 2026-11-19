@@ -102,3 +102,34 @@ export function mergeAndSortMessages(
     })
     .map((entry) => entry.msg);
 }
+
+export type GeminiHistoryTurn = { role: 'user' | 'model'; parts: { text: string }[] };
+
+/**
+ * Construye el historial que se envía a Gemini a partir de los mensajes del chat:
+ * descarta mensajes de error y vacíos (por ejemplo, una respuesta detenida antes de
+ * escribir nada), une turnos seguidos del mismo rol, toma los últimos `limit` turnos
+ * y garantiza que el historial empiece con un turno del usuario.
+ */
+export function buildGeminiHistory(messages: ChatMessage[], limit = 6): GeminiHistoryTurn[] {
+  const turns: GeminiHistoryTurn[] = [];
+
+  for (const m of messages) {
+    if (!m || m.isError) continue;
+    const text = (m.text || '').trim();
+    if (!text) continue;
+    const role = m.sender === 'user' ? 'user' : 'model';
+    const last = turns[turns.length - 1];
+    if (last && last.role === role) {
+      last.parts[0].text += `\n\n${text}`;
+    } else {
+      turns.push({ role, parts: [{ text }] });
+    }
+  }
+
+  const recent = turns.slice(-limit);
+  while (recent.length > 0 && recent[0].role !== 'user') {
+    recent.shift();
+  }
+  return recent;
+}

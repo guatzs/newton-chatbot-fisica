@@ -25,7 +25,8 @@ import {
   Plus, 
   History, 
   MessageSquare,
-  X
+  X,
+  Square
 } from 'lucide-react';
 
 interface ChatViewProps {
@@ -36,6 +37,7 @@ interface ChatViewProps {
   onOpenScanner: () => void;
   onOpenVoice: () => void;
   isLoading: boolean;
+  onStopGeneration?: () => void;
   loadingMessages?: boolean;
   activeTopic?: string;
   activeModuleId?: CourseModuleId;
@@ -54,6 +56,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
   onOpenScanner,
   onOpenVoice,
   isLoading,
+  onStopGeneration,
   loadingMessages = false,
   activeTopic = 'Tutoría de Física Aplicada',
   activeModuleId = 'electrostatica',
@@ -68,6 +71,11 @@ export const ChatView: React.FC<ChatViewProps> = ({
   const [isMobileHistoryOpen, setIsMobileHistoryOpen] = useState(false);
   const [sessionPendingDelete, setSessionPendingDelete] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Mientras Newton ya está escribiendo (streaming), se oculta el aviso "derivando la solución"
+  const lastMessage = messages[messages.length - 1];
+  const isStreamingText =
+    isLoading && lastMessage?.sender === 'bot' && !lastMessage.isError && Boolean(lastMessage.text);
 
   const scrollToBottom = () => {
     // Usa scroll 'auto' mientras llega texto en streaming para evitar saltos o bloqueos
@@ -336,7 +344,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                     <span>{isUser ? 'Estudiante' : 'Newton AI'}</span>
                     <span>•</span>
                     <span>{msg.timestamp}</span>
-                    {!isUser && !msg.isError && (
+                    {!isUser && !msg.isError && Boolean(msg.text) && (
                       <button
                         onClick={() => handleToggleSpeech(msg.id, msg.text)}
                         title="Escuchar con Text-to-Speech"
@@ -391,6 +399,20 @@ export const ChatView: React.FC<ChatViewProps> = ({
                         <ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]}>
                           {msg.text}
                         </ReactMarkdown>
+                      </div>
+                    )}
+
+                    {/* Aviso de respuesta detenida con el botón "Detener" */}
+                    {msg.stopped && (
+                      <div
+                        className={`${msg.text ? 'mt-2.5 pt-2 border-t border-[#941C2F]/20 dark:border-[#FF9FAE]/20' : ''} flex items-center gap-1.5 text-[11px] font-mono italic text-[#941C2F]/80 dark:text-[#FF9FAE]/80`}
+                      >
+                        <Square className="w-3 h-3 fill-current" />
+                        <span>
+                          {msg.text
+                            ? 'Respuesta detenida. Puedes volver a preguntar cuando quieras.'
+                            : 'Detuviste la respuesta antes de que Newton empezara a escribir.'}
+                        </span>
                       </div>
                     )}
 
@@ -537,7 +559,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
             })}
 
             {/* Loading Indicator */}
-            {isLoading && (
+            {isLoading && !isStreamingText && (
               <div className="flex items-start gap-2 max-w-sm">
                 <NewtonMascot size={28} mood="thinking" animated />
                 <div className="bg-[#FDC2B1] dark:bg-[#4A2530] rounded-3xl rounded-tl-none p-3.5 shadow-xs flex items-center gap-2 text-xs text-[#3D121A] dark:text-[#FBE9E4]">
@@ -587,13 +609,26 @@ export const ChatView: React.FC<ChatViewProps> = ({
                 className="flex-1 bg-transparent px-2 text-xs sm:text-sm text-[#546C37] dark:text-[#CFE3A8] placeholder-[#546C37]/50 dark:placeholder-[#CFE3A8]/50 focus:outline-none font-['Space_Grotesk']"
               />
 
-              <button
-                type="submit"
-                disabled={!inputText.trim() || isLoading || loadingMessages}
-                className="w-9 h-9 rounded-full bg-[#546C37] dark:bg-[#6E8F47] hover:bg-[#546C37]/90 dark:hover:bg-[#6E8F47]/90 disabled:opacity-40 text-white flex items-center justify-center transition-transform active:scale-95 shrink-0 shadow-xs cursor-pointer"
-              >
-                <Send className="w-4 h-4 text-white" />
-              </button>
+              {isLoading && onStopGeneration ? (
+                <button
+                  type="button"
+                  onClick={onStopGeneration}
+                  title="Detener respuesta"
+                  aria-label="Detener respuesta"
+                  className="w-9 h-9 rounded-full bg-[#941C2F] dark:bg-[#C0334A] hover:bg-[#941C2F]/90 dark:hover:bg-[#C0334A]/90 text-white flex items-center justify-center transition-transform active:scale-95 shrink-0 shadow-xs cursor-pointer"
+                >
+                  <Square className="w-3.5 h-3.5 text-white fill-current" />
+                </button>
+              ) : (
+                <button
+                  type="submit"
+                  disabled={!inputText.trim() || isLoading || loadingMessages}
+                  title="Enviar"
+                  className="w-9 h-9 rounded-full bg-[#546C37] dark:bg-[#6E8F47] hover:bg-[#546C37]/90 dark:hover:bg-[#6E8F47]/90 disabled:opacity-40 text-white flex items-center justify-center transition-transform active:scale-95 shrink-0 shadow-xs cursor-pointer"
+                >
+                  <Send className="w-4 h-4 text-white" />
+                </button>
+              )}
             </form>
           </div>
         </div>

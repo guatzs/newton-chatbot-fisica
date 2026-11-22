@@ -1,5 +1,4 @@
 import { GoogleGenAI, ThinkingLevel } from '@google/genai';
-import { SimulationAdjustment, SimulationParams, SimulationType } from '../types';
 import { parseSimulacion } from './simulationMarker';
 import { looksSpanishPrompt } from '../utils/diagramUrl';
 import { formatCourseMaterialPromptSection } from './courseMaterial';
@@ -71,47 +70,15 @@ REGLAS DE RIGOR Y FORMATO DE RESPUESTA:
 
      )
    - Cuando el usuario solicite resolver un ejercicio sobre una fórmula, redacta el enunciado del problema con datos numéricos concretos y presenta todas las ecuaciones del desarrollo paso a paso envueltas en bloques $$ ... $$ limpios, evitando entornos \\begin{aligned} innecesarios.
-   - Si la consulta involucra la ley de Gauss en un conductor, la ley de Coulomb entre dos cargas o la ley de Ohm en un circuito, menciona que pueden visualizarlo con el simulador interactivo de Newton.
-4. Diagramas e ilustraciones (uso controlado):
-   - PRINCIPIO: Responde primero y principalmente con texto, directo a lo que el estudiante preguntó. El diagrama es un apoyo, nunca el centro de la respuesta.
-   - Agrega al final de tu respuesta (antes de [SUGERENCIAS]) UNA línea con este formato exacto, escribiendo la descripción SIEMPRE en inglés (tradúcela al inglés si el estudiante escribió en español), solo si el estudiante lo pidió explícitamente:
-   [DIAGRAMA]: precise technical description in English of the diagram, including components, polarities (+ and -), arrow directions for current or field lines, white background, textbook educational style
+   - Si la consulta involucra la ley de Gauss en un conductor, la ley de Coulomb entre dos cargas o la ley de Ohm en un circuito, puedes indicar brevemente al estudiante que puede experimentar con esos fenómenos en la pestaña **Simuladores** de la aplicación.
+4. Diagramas e ilustraciones (temporalmente desactivado):
+   - El generador automático de imágenes/diagramas está temporalmente en pausa. NO incluyas la etiqueta [DIAGRAMA]: en tus respuestas ni ofrezcas en [SUGERENCIAS] opciones para "dibujar" o "generar un diagrama/imagen".
+   - Si el estudiante pide dibujar o graficar un circuito o campo, explica claramente paso a paso la topología, direcciones y polaridades en texto estructurado, e indícale con amabilidad que la generación automática de imágenes está temporalmente en mantenimiento. Cuando corresponda a Gauss en conductores, ley de Coulomb o ley de Ohm, oriéntalo a usar la pestaña **Simuladores** de Newton.
 
-   CUÁNDO SÍ incluir [DIAGRAMA] (ÚNICO caso permitido):
-   - El estudiante lo pidió explícitamente en SU ÚLTIMO mensaje ("dibuja", "grafica", "genera una imagen", "crea una imagen", "ilustra", "muéstrame un diagrama/esquema").
-   - Si el problema tiene geometría o topología compleja (circuitos con varias mallas, líneas de campo, espiras, rectificadores) pero el estudiante NO pidió el dibujo, NO incluyas [DIAGRAMA]: ofrécelo solo como una de las [SUGERENCIAS] (ej. "Dibuja el diagrama del circuito").
-
-   CUÁNDO NO incluir [DIAGRAMA]:
-   - Preguntas de definición, fórmula, unidades o conceptos (ej. "¿Qué dice la ley de Ohm?", "¿Qué es la constante tau?").
-   - Cálculos directos de una sola fórmula sin geometría relevante (ej. fuerza entre dos cargas, tau = RC).
-   - Cuando el diagrama solo repetiría o decoraría lo que ya explicaste en texto.
-   - Cuando el estudiante no dio datos suficientes: nunca inventes componentes, valores ni conexiones para completar un diagrama; pide la información que falta.
-   - Cuando la pregunta actual no se relaciona con el diagrama (no reutilices el tema de un mensaje anterior).
-
-   PRUEBA ANTES DE INCLUIRLO: "¿Este diagrama ayuda al estudiante a entender o resolver lo que preguntó ahora, o es relleno?" Si es relleno, no lo incluyas.
-
-   CASOS DUDOSOS: Si un diagrama podría ayudar pero no es necesario, NO lo generes. En su lugar, ofrécelo como una de las sugerencias de [SUGERENCIAS] (ej. "Dibuja el diagrama del circuito").
-
-   EJEMPLOS:
-   - "Calcula la corriente en R2 del circuito con dos fuentes y tres resistencias" → NO (no lo pidió; ofrece "Dibuja el diagrama del circuito" en [SUGERENCIAS]).
-   - "¿Cuál es la fórmula de la ley de Gauss?" → NO (solo definición).
-   - "Calcula la fuerza entre q1 = 2 µC y q2 = 3 µC separadas 0.5 m" → NO (una fórmula, sin geometría compleja).
-   - "Explícame cómo se rectifica una señal con un puente de diodos" → NO (no lo pidió; ofrécelo en [SUGERENCIAS]).
-   - "Dibuja el puente de diodos con las polaridades" → SÍ (pedido explícito).
-   - "Dibújame las líneas de campo de un dipolo" → SÍ (pedido explícito).
-   - "¿Cuánto vale la permitividad del vacío?" → NO.
-
-   Los simuladores interactivos de Newton (conductor de Gauss, ley de Coulomb, ley de Ohm) son independientes del diagrama: puedes mencionarlos en texto cuando el tema coincida, pero no los uses como sustituto de [DIAGRAMA].
-
-5. Simulaciones interactivas prefabricadas:
-   - Cuando el estudiante pida ver, probar o simular la ley de Coulomb (dos cargas puntuales alineadas) o la ley de Ohm (batería y resistencia), o cuando resuelvas un ejercicio numérico de esos dos temas, agrega UNA sola línea [SIMULACION]: antes de [SUGERENCIAS]:, con uno de estos formatos exactos:
-     [SIMULACION]: coulomb | q1=<número> | q2=<número> | r=<número>
-     [SIMULACION]: ohm | v=<número> | res=<número>
-   - Unidades fijas: q1 y q2 en microcoulombs (µC), r en metros (m), v en voltios (V), res en ohmios (Ω). Convierte antes de escribir.
-   - Escribe solo números con punto decimal (ejemplo 0.5), sin unidades, sin separador de miles y sin notación científica.
-   - Usa los datos del ejercicio del estudiante. Si un dato no se dio, omite ese parámetro; no lo inventes.
-   - No escribas la línea si el tema no es Coulomb u Ohm, ni cuando respondas que el tema está fuera del sílabo.
-   - Explica primero con texto; la simulación se mostrará debajo automáticamente. No menciones la línea [SIMULACION]: al estudiante.
+5. Simuladores interactivos (sección dedicada):
+   - Los simuladores interactivos (Ley de Gauss en conductores, Ley de Coulomb y Ley de Ohm) están disponibles exclusivamente en la pestaña **Simuladores** de la aplicación y NO se abren automáticamente dentro del chat.
+   - NO incluyas líneas [SIMULACION]: en tus respuestas ni prometas que un simulador aparecerá debajo del mensaje.
+   - Si el estudiante pide simular o experimentar interactivamente con Gauss, Coulomb u Ohm, resuelve o explica el concepto en el chat y sugiérele abrir la pestaña **Simuladores** para variar los parámetros en tiempo real.
    - Nunca escribas código HTML, SVG, Canvas ni JavaScript.
 
 6. Sugerencias de profundización:
@@ -172,19 +139,78 @@ const AUDIO_TRANSCRIPTION_MODELS = ['gemini-3.5-transcribe', 'gemini-3.8-flash',
 const AUDIO_ATTEMPT_TIMEOUT_MS = 20000;
 const VISION_ATTEMPT_TIMEOUT_MS = 45000;
 
-async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, model: string): Promise<T> {
+export const NEWTON_GENERATION_CONFIG = {
+  temperature: 0.2,
+  maxOutputTokens: 1800,
+} as const;
+
+async function withTimeout<T>(
+  operation: (signal: AbortSignal, clearAttemptTimeout: () => void) => Promise<T>,
+  timeoutMs: number,
+  model: string,
+  parentSignal?: AbortSignal
+): Promise<T> {
+  if (parentSignal?.aborted) {
+    const abortErr = new Error('Petición cancelada por el cliente.');
+    abortErr.name = 'AbortError';
+    throw abortErr;
+  }
+
+  const attemptController = new AbortController();
+  let timedOut = false;
   let timeoutId: NodeJS.Timeout | null = null;
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    timeoutId = setTimeout(() => {
+
+  const clearAttemptTimeout = () => {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+      timeoutId = null;
+    }
+  };
+
+  const onParentAbort = () => {
+    clearAttemptTimeout();
+    if (!attemptController.signal.aborted) {
+      const abortErr = new Error('Petición cancelada por el cliente.');
+      abortErr.name = 'AbortError';
+      attemptController.abort(abortErr);
+    }
+  };
+
+  parentSignal?.addEventListener('abort', onParentAbort, { once: true });
+
+  timeoutId = setTimeout(() => {
+    timedOut = true;
+    timeoutId = null;
+    if (!attemptController.signal.aborted) {
       const tErr = new Error(`Timeout de ${timeoutMs}ms excedido en modelo ${model}`);
       tErr.name = 'TimeoutError';
-      reject(tErr);
-    }, timeoutMs);
-  });
+      attemptController.abort(tErr);
+    }
+  }, timeoutMs);
+
+  let completed = false;
   try {
-    return await Promise.race([promise, timeoutPromise]);
+    const result = await operation(attemptController.signal, clearAttemptTimeout);
+    completed = true;
+    return result;
+  } catch (err: any) {
+    if (timedOut) {
+      const tErr = new Error(`Timeout de ${timeoutMs}ms excedido en modelo ${model}`);
+      tErr.name = 'TimeoutError';
+      throw tErr;
+    }
+    if (parentSignal?.aborted) {
+      const abortErr = new Error('Petición cancelada por el cliente.');
+      abortErr.name = 'AbortError';
+      throw abortErr;
+    }
+    throw err;
   } finally {
-    if (timeoutId) clearTimeout(timeoutId);
+    clearAttemptTimeout();
+    parentSignal?.removeEventListener('abort', onParentAbort);
+    if (!completed && !attemptController.signal.aborted) {
+      attemptController.abort();
+    }
   }
 }
 
@@ -264,9 +290,6 @@ export interface StreamResult {
   text: string;
   diagramPrompt?: string;
   quickChips: string[];
-  simulationType?: SimulationType;
-  simulationParams?: SimulationParams;
-  simulationAdjusted?: SimulationAdjustment[];
 }
 
 /**
@@ -322,41 +345,49 @@ export async function streamNewtonAI(params: {
     console.time(modelTimer);
 
     try {
-      const responseStream = await withTimeout(
-        ai.models.generateContentStream({
-          model,
-          contents,
-          config: {
-            systemInstruction: getNewtonSystemInstruction(),
-            thinkingConfig: { thinkingLevel },
-            abortSignal: params.abortSignal,
-          },
-        }),
-        timeoutMs,
-        model
-      );
+      await withTimeout(
+        async (attemptSignal, clearAttemptTimeout) => {
+          const responseStream = await ai.models.generateContentStream({
+            model,
+            contents,
+            config: {
+              systemInstruction: getNewtonSystemInstruction(),
+              temperature: NEWTON_GENERATION_CONFIG.temperature,
+              maxOutputTokens: NEWTON_GENERATION_CONFIG.maxOutputTokens,
+              thinkingConfig: { thinkingLevel },
+              abortSignal: attemptSignal,
+            },
+          });
 
-      // Iterate through chunks
-      for await (const chunk of responseStream) {
-        if (params.abortSignal?.aborted) {
-          console.warn(`[Newton AI Stream] Client disconnected while streaming from ${model}. Aborting.`);
-          throw new Error('Petición cancelada por el cliente.');
-        }
+          // Iterate through chunks using the attempt's real AbortSignal
+          for await (const chunk of responseStream) {
+            if (attemptSignal.aborted) {
+              console.warn(`[Newton AI Stream] Attempt aborted while streaming from ${model}.`);
+              throw attemptSignal.reason instanceof Error
+                ? attemptSignal.reason
+                : new Error('Petición cancelada por el cliente.');
+            }
 
-        const chunkText = chunk.text || '';
-        if (chunkText) {
-          rawAccumulated += chunkText;
+            const chunkText = chunk.text || '';
+            if (chunkText) {
+              clearAttemptTimeout();
+              rawAccumulated += chunkText;
 
-          // Safe chunk streaming (hides [DIAGRAMA] and [SUGERENCIAS] in real-time)
-          const safeVisible = getSafeVisibleText(rawAccumulated);
-          if (safeVisible.length > lastEmittedLength) {
-            const diff = safeVisible.slice(lastEmittedLength);
-            lastEmittedLength = safeVisible.length;
-            params.onChunk(diff);
-            hasEmittedChunk = true;
+              // Safe chunk streaming (hides [DIAGRAMA] and [SUGERENCIAS] in real-time)
+              const safeVisible = getSafeVisibleText(rawAccumulated);
+              if (safeVisible.length > lastEmittedLength) {
+                const diff = safeVisible.slice(lastEmittedLength);
+                lastEmittedLength = safeVisible.length;
+                params.onChunk(diff);
+                hasEmittedChunk = true;
+              }
+            }
           }
-        }
-      }
+        },
+        timeoutMs,
+        model,
+        params.abortSignal
+      );
 
       console.timeEnd(modelTimer);
       if (rawAccumulated.trim()) {
@@ -394,7 +425,7 @@ export async function streamNewtonAI(params: {
     throw lastError || new Error('No se pudo obtener respuesta de los modelos de Newton AI.');
   }
 
-  // Parse [SIMULACION] control line first before [DIAGRAMA] and [SUGERENCIAS]
+  // Strip any stray [SIMULACION] control line cleanly without attaching embedded simulators to chat
   const simParsed = parseSimulacion(rawAccumulated);
   let cleanText = simParsed.cleanText;
 
@@ -415,45 +446,16 @@ export async function streamNewtonAI(params: {
     cleanText = cleanText.replace(/\[SUGERENCIAS\]:\s*[^\n\r]+/i, '').trim();
   }
 
-  // Detect relevant interactive simulation (marker takes precedence over keyword fallback)
-  let simulationType: SimulationType | undefined = simParsed.type;
-  if (!simulationType) {
-    const lower = (params.prompt + ' ' + cleanText).toLowerCase();
-    if (lower.includes('conductor') && (lower.includes('gauss') || lower.includes('equilibrio') || lower.includes('esfera'))) {
-      simulationType = 'conductor_gauss';
-    } else if (lower.includes('ley de coulomb')) {
-      simulationType = 'coulomb';
-    } else if (lower.includes('ley de ohm')) {
-      simulationType = 'ohm';
-    }
-  }
-
   // Default quick chips if none detected
   if (quickChips.length === 0) {
-    if (simulationType === 'conductor_gauss') {
-      quickChips = ['Explícame el caso r < R', 'Dame un ejemplo numérico', '¿Qué pasa si es un aislante?', 'Graficar campo'];
-    } else if (simulationType === 'coulomb') {
-      quickChips = ['Duplica la distancia: ¿qué pasa con F?', 'Cambia q2 a negativo', 'Dame un ejercicio de examen'];
-    } else if (simulationType === 'ohm') {
-      quickChips = ['Duplica la resistencia: ¿qué pasa con I?', 'Calcula la potencia disipada', 'Dame un ejercicio de examen'];
-    } else {
-      quickChips = ['Dame un ejemplo paso a paso', '¿Qué fórmula se aplica?', 'Ver constantes físicas'];
-    }
+    quickChips = ['Dame un ejemplo paso a paso', '¿Qué fórmula se aplica?', 'Ver constantes físicas'];
   }
 
-  const result: StreamResult = {
+  return {
     text: cleanText,
     diagramPrompt,
     quickChips,
-    simulationType,
   };
-  if (simParsed.params !== undefined) {
-    result.simulationParams = simParsed.params;
-  }
-  if (simParsed.adjusted.length > 0) {
-    result.simulationAdjusted = simParsed.adjusted;
-  }
-  return result;
 }
 
 export async function askNewtonAI(params: {
@@ -475,6 +477,7 @@ export async function askNewtonVision(params: {
   prompt?: string;
   imageBase64: string;
   imageMimeType?: string;
+  abortSignal?: AbortSignal;
 }): Promise<StreamResult> {
   console.time('[Newton Vision] Total Execution');
   const ai = getAI();
@@ -507,20 +510,29 @@ export async function askNewtonVision(params: {
 
   for (let i = 0; i < modelsToTry.length; i++) {
     const model = modelsToTry[i];
+    if (params.abortSignal?.aborted) {
+      throw new Error('Petición cancelada por el cliente.');
+    }
+
     const modelTimer = `[Newton Vision] generateContent (${model})`;
     console.time(modelTimer);
     try {
       const response = await withTimeout(
-        ai.models.generateContent({
-          model,
-          contents,
-          config: {
-            systemInstruction: getNewtonVisionInstruction(),
-            thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
-          },
-        }),
+        (attemptSignal) =>
+          ai.models.generateContent({
+            model,
+            contents,
+            config: {
+              systemInstruction: getNewtonVisionInstruction(),
+              temperature: NEWTON_GENERATION_CONFIG.temperature,
+              maxOutputTokens: NEWTON_GENERATION_CONFIG.maxOutputTokens,
+              thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+              abortSignal: attemptSignal,
+            },
+          }),
         VISION_ATTEMPT_TIMEOUT_MS,
-        model
+        model,
+        params.abortSignal
       );
 
       console.timeEnd(modelTimer);
@@ -529,6 +541,9 @@ export async function askNewtonVision(params: {
     } catch (err: any) {
       console.timeEnd(modelTimer);
       lastError = err;
+      if (params.abortSignal?.aborted || err?.message?.includes('cancelada por el cliente')) {
+        throw new Error('Petición cancelada por el cliente.');
+      }
       const retryable = isRetryableModelError(err);
       console.warn(
         `[Newton Vision] Model ${model} failed (retryable=${retryable}):`,
@@ -547,7 +562,7 @@ export async function askNewtonVision(params: {
     throw lastError || new Error('No se pudo procesar la imagen con los modelos de visión de Newton AI.');
   }
 
-  // Parse [SIMULACION] control line first before [DIAGRAMA] and [SUGERENCIAS]
+  // Strip any stray [SIMULACION] control line cleanly without attaching embedded simulators to chat
   const simParsed = parseSimulacion(rawResponseText);
   let cleanText = simParsed.cleanText;
 
@@ -568,48 +583,21 @@ export async function askNewtonVision(params: {
     cleanText = cleanText.replace(/\[SUGERENCIAS\]:\s*[^\n\r]+/i, '').trim();
   }
 
-  let simulationType: SimulationType | undefined = simParsed.type;
-  if (!simulationType) {
-    const lower = (userPrompt + ' ' + cleanText).toLowerCase();
-    if (lower.includes('conductor') && (lower.includes('gauss') || lower.includes('equilibrio') || lower.includes('esfera'))) {
-      simulationType = 'conductor_gauss';
-    } else if (lower.includes('ley de coulomb')) {
-      simulationType = 'coulomb';
-    } else if (lower.includes('ley de ohm')) {
-      simulationType = 'ohm';
-    }
-  }
-
   if (quickChips.length === 0) {
-    if (simulationType === 'conductor_gauss') {
-      quickChips = ['Explícame el caso r < R', 'Ver simulación interactiva', 'Calcular densidad superficial'];
-    } else if (simulationType === 'coulomb') {
-      quickChips = ['Duplica la distancia: ¿qué pasa con F?', 'Cambia q2 a negativo', 'Dame un ejercicio de examen'];
-    } else if (simulationType === 'ohm') {
-      quickChips = ['Duplica la resistencia: ¿qué pasa con I?', 'Calcula la potencia disipada', 'Dame un ejercicio de examen'];
-    } else {
-      quickChips = ['Calcular con otros valores', 'Explicar las leyes aplicadas', 'Ver constante física'];
-    }
+    quickChips = ['Calcular con otros valores', 'Explicar las leyes aplicadas', 'Ver constante física'];
   }
 
-  const result: StreamResult = {
+  return {
     text: cleanText,
     diagramPrompt,
     quickChips,
-    simulationType,
   };
-  if (simParsed.params !== undefined) {
-    result.simulationParams = simParsed.params;
-  }
-  if (simParsed.adjusted.length > 0) {
-    result.simulationAdjusted = simParsed.adjusted;
-  }
-  return result;
 }
 
 export async function transcribeNewtonAudio(params: {
   audioBase64: string;
   mimeType?: string;
+  abortSignal?: AbortSignal;
 }): Promise<{ text: string }> {
   console.time('[Newton Audio] Total Transcription');
   const ai = getAI();
@@ -638,16 +626,25 @@ export async function transcribeNewtonAudio(params: {
 
   for (let i = 0; i < AUDIO_TRANSCRIPTION_MODELS.length; i++) {
     const model = AUDIO_TRANSCRIPTION_MODELS[i];
+    if (params.abortSignal?.aborted) {
+      throw new Error('Petición cancelada por el cliente.');
+    }
+
     const modelTimer = `[Newton Audio] transcribe (${model})`;
     console.time(modelTimer);
     try {
       const response = await withTimeout(
-        ai.models.generateContent({
-          model,
-          contents,
-        }),
+        (attemptSignal) =>
+          ai.models.generateContent({
+            model,
+            contents,
+            config: {
+              abortSignal: attemptSignal,
+            },
+          }),
         AUDIO_ATTEMPT_TIMEOUT_MS,
-        model
+        model,
+        params.abortSignal
       );
 
       console.timeEnd(modelTimer);
@@ -656,6 +653,9 @@ export async function transcribeNewtonAudio(params: {
     } catch (err: any) {
       console.timeEnd(modelTimer);
       lastError = err;
+      if (params.abortSignal?.aborted || err?.message?.includes('cancelada por el cliente')) {
+        throw new Error('Petición cancelada por el cliente.');
+      }
       console.warn(`[Newton Audio] Model ${model} failed:`, err?.message || err);
       // En audio se prueba SIEMPRE el siguiente modelo (un 400 por formato o modelo no compatible
       // con generateContent no debe cortar la transcripción)

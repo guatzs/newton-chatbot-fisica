@@ -21,6 +21,7 @@ import {
   GoogleAuthProvider, 
   signInWithPopup, 
   signInWithRedirect, 
+  signInAnonymously,
   getRedirectResult, 
   signOut, 
   onAuthStateChanged,
@@ -87,7 +88,8 @@ export function translateAuthError(err: unknown): string {
     case 'auth/password-does-not-meet-requirements':
       return 'La contraseña es demasiado débil. Revisa los requisitos.';
     case 'auth/operation-not-allowed':
-      return 'El inicio de sesión con correo no está activado en Firebase.';
+    case 'auth/admin-restricted-operation':
+      return 'Este método de acceso no está activado en Firebase Authentication.';
     case 'auth/account-exists-with-different-credential':
       return 'Este correo ya está asociado a otro método de acceso. Inicia sesión con ese método.';
     default:
@@ -256,6 +258,55 @@ export async function checkRedirectResult(): Promise<User | null> {
 }
 
 /**
+ * Initiates a transparent Firebase anonymous session for guest users so API calls
+ * include a verified Firebase ID token.
+ */
+export async function signInAsGuest(): Promise<AuthResult> {
+  try {
+    if (auth.currentUser) {
+      return { success: true, user: auth.currentUser };
+    }
+    const cred = await signInAnonymously(auth);
+    return { success: true, user: cred.user };
+  } catch (err: unknown) {
+    const fbErr = err as { code?: string };
+    const code = fbErr?.code || '';
+    if (code === 'auth/operation-not-allowed' || code === 'auth/admin-restricted-operation') {
+      return {
+        success: false,
+        errorMessage:
+          'El modo invitado requiere activar "Anónimo" en Firebase Authentication, o inicia sesión con Google.',
+      };
+    }
+    return {
+      success: false,
+      errorMessage: translateAuthError(err),
+    };
+  }
+}
+
+/**
+ * Retrieves the current Firebase ID token (signing in anonymously transparently
+ * if no user is currently signed in) to authorize backend /api/* requests.
+ */
+export async function getFirebaseIdToken(forceRefresh = false): Promise<string | null> {
+  try {
+    if (typeof auth.authStateReady === 'function') {
+      await auth.authStateReady();
+    }
+    let user = auth.currentUser;
+    if (!user) {
+      const cred = await signInAnonymously(auth);
+      user = cred.user;
+    }
+    return await user.getIdToken(forceRefresh);
+  } catch (err) {
+    console.warn('[Auth] No se pudo obtener el token de sesión de Firebase:', err);
+    return null;
+  }
+}
+
+/**
  * Signs out current user from Firebase.
  */
 export async function signOutUser(): Promise<void> {
@@ -297,7 +348,7 @@ export async function uploadSessionImage(
   dataUrl: string
 ): Promise<string | null> {
   const user = auth.currentUser;
-  if (!user) return null;
+  if (!user || user.isAnonymous) return null;
   if (!dataUrl || !dataUrl.startsWith('data:image')) return dataUrl || null;
 
   try {
@@ -313,11 +364,11 @@ export async function uploadSessionImage(
 
 /**
  * Saves session metadata to storage.
- * In guest mode (auth.currentUser == null), returns immediately without saving.
+ * In guest mode (no user or anonymous user), returns immediately without saving.
  */
 export async function saveSessionToStorage(session: ChatSession): Promise<void> {
   const user = auth.currentUser;
-  if (!user) return;
+  if (!user || user.isAnonymous) return;
   const uid = user.uid;
 
   const sessionWithUser: ChatSession = stripUndefinedFields({
@@ -360,7 +411,7 @@ export async function saveSessionToStorage(session: ChatSession): Promise<void> 
  */
 export async function fetchAllSessions(): Promise<ChatSession[]> {
   const user = auth.currentUser;
-  if (!user) return [];
+  if (!user || user.isAnonymous) return [];
   const uid = user.uid;
 
   try {
@@ -400,7 +451,7 @@ export async function fetchAllSessions(): Promise<ChatSession[]> {
  */
 export async function saveMessageToStorage(sessionId: string, message: ChatMessage): Promise<void> {
   const user = auth.currentUser;
-  if (!user) return;
+  if (!user || user.isAnonymous) return;
   const uid = user.uid;
 
   const storageMessage: ChatMessage = { ...message };
@@ -459,7 +510,7 @@ export async function saveMessageToStorage(sessionId: string, message: ChatMessa
  */
 export async function fetchMessagesForSession(sessionId: string): Promise<ChatMessage[]> {
   const user = auth.currentUser;
-  if (!user) return [];
+  if (!user || user.isAnonymous) return [];
   const uid = user.uid;
 
   let localMessages: ChatMessage[] = [];
@@ -497,7 +548,7 @@ export async function fetchMessagesForSession(sessionId: string): Promise<ChatMe
  */
 export async function deleteSessionFromStorage(sessionId: string): Promise<void> {
   const user = auth.currentUser;
-  if (!user) return;
+  if (!user || user.isAnonymous) return;
   const uid = user.uid;
 
   try {

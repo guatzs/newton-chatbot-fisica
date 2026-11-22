@@ -34,6 +34,7 @@ export const SphericalConductorSim: React.FC<SphericalConductorSimProps> = ({
   const sigmaMicroC_m2 = (charge / surfaceArea).toFixed(2);
   const eSurface_kN_C = ((8.99 * Math.abs(charge)) / Math.pow(rMeters, 2)).toFixed(1);
   const vSurface_kV = ((8.99 * charge) / rMeters).toFixed(1);
+  void qCoulombs;
 
   // Visual SVG sizing
   const center = 150;
@@ -44,261 +45,341 @@ export const SphericalConductorSim: React.FC<SphericalConductorSimProps> = ({
   const angles = Array.from({ length: 12 }, (_, i) => (i * 360) / 12);
 
   return (
-    <div className={`bg-white/90 dark:bg-[#16241A]/90 backdrop-blur-sm rounded-3xl p-4 border border-[#ADCA88]/40 dark:border-[#3C5A40]/40 shadow-sm ${compact ? 'max-w-md' : 'w-full'}`}>
+    <div
+      className={`w-full max-w-full min-w-0 overflow-x-hidden bg-white/90 dark:bg-[#16241A]/90 backdrop-blur-sm rounded-3xl p-3 sm:p-5 border border-[#ADCA88]/40 dark:border-[#3C5A40]/40 shadow-sm ${
+        compact ? 'max-w-md' : ''
+      }`}
+    >
       {/* Header tags */}
-      <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-        <div className="flex items-center gap-2">
-          <div className="w-6 h-6 rounded-full bg-[#546C37] dark:bg-[#6E8F47] text-white flex items-center justify-center text-xs font-bold">
+      <div className="flex flex-wrap items-center justify-between gap-2 pb-3 mb-4 border-b border-[#ADCA88]/30 dark:border-[#3C5A40]/30 min-w-0">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="w-6 h-6 rounded-full bg-[#546C37] dark:bg-[#6E8F47] text-white flex items-center justify-center text-xs font-bold shrink-0">
             <Zap className="w-3.5 h-3.5" />
           </div>
-          <span className="font-semibold text-xs text-[#546C37] dark:text-[#CFE3A8] uppercase tracking-wider font-['Pixelify_Sans']">
+          <span className="font-semibold text-xs sm:text-sm text-[#546C37] dark:text-[#CFE3A8] uppercase tracking-wider font-['Pixelify_Sans'] break-words">
             Simulador de Conductor en Equilibrio
           </span>
         </div>
-        <div className="flex items-center gap-1.5 text-[11px] font-medium">
+        <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-medium min-w-0">
           <span className="bg-[#D6E3B1] dark:bg-[#24402B] text-[#546C37] dark:text-[#CFE3A8] px-2.5 py-0.5 rounded-full">
             Simetría Radial Esférica
           </span>
-          <span className={`px-2.5 py-0.5 rounded-full font-bold ${isPositive ? 'bg-[#FA8989]/30 text-[#941C2F] dark:text-[#FF9FAE]' : 'bg-blue-100 dark:bg-blue-950/60 text-blue-800 dark:text-blue-300'}`}>
+          <span
+            className={`px-2.5 py-0.5 rounded-full font-bold tabular-nums ${
+              isPositive
+                ? 'bg-[#FA8989]/30 text-[#941C2F] dark:text-[#FF9FAE]'
+                : 'bg-blue-100 dark:bg-blue-950/60 text-blue-800 dark:text-blue-300'
+            }`}
+          >
             Carga Q = {charge > 0 ? `+${charge}` : charge} µC
           </span>
         </div>
       </div>
 
-      {/* Interactive Visual Graphic */}
-      <div className="relative bg-[#FFFBD9]/70 dark:bg-[#0F1A0F]/70 rounded-2xl p-2 flex flex-col items-center justify-center border border-[#ADCA88]/20 dark:border-[#3C5A40]/20 overflow-hidden">
-        <svg viewBox="0 0 300 300" className="w-full max-w-[280px] h-[260px] select-none">
-          <defs>
-            <radialGradient id="conductorGrad" cx="50%" cy="50%" r="50%">
-              <stop offset="0%" stopColor="#FFFBD9" stopOpacity="0.4" />
-              <stop offset="85%" stopColor="#D6E3B1" stopOpacity="0.8" />
-              <stop offset="100%" stopColor="#ADCA88" stopOpacity="0.9" />
-            </radialGradient>
-          </defs>
+      {/* Responsive Grid: stacked on mobile/tablet, side-by-side on desktop (lg:) */}
+      <div className={compact ? 'grid grid-cols-1 gap-4' : 'grid grid-cols-1 lg:grid-cols-12 gap-4 items-start'}>
+        {/* Visual Graphic + Zone Inspector */}
+        <div className={compact ? 'col-span-1 min-w-0 space-y-3' : 'col-span-1 lg:col-span-7 min-w-0 space-y-3'}>
+          <div className="relative w-full min-w-0 bg-[#FFFBD9]/70 dark:bg-[#0F1A0F]/70 rounded-2xl p-2 sm:p-3 flex flex-col items-center justify-center border border-[#ADCA88]/30 dark:border-[#3C5A40]/30 overflow-hidden">
+            <svg
+              viewBox="0 0 300 300"
+              role="img"
+              aria-label={`Esfera conductora en equilibrio electrostático de radio ${radius} centímetros y carga neta ${charge} microcoulombs.`}
+              className="w-full h-auto max-h-[340px] sm:max-h-[420px] select-none block"
+            >
+              <defs>
+                <radialGradient id="conductorGrad" cx="50%" cy="50%" r="50%">
+                  <stop offset="0%" stopColor="#FFFBD9" stopOpacity="0.4" />
+                  <stop offset="85%" stopColor="#D6E3B1" stopOpacity="0.8" />
+                  <stop offset="100%" stopColor="#ADCA88" stopOpacity="0.9" />
+                </radialGradient>
+              </defs>
 
-          {/* Radial Electric Field Lines */}
-          {angles.map((deg, i) => {
-            const rad = (deg * Math.PI) / 180;
-            const x1 = center + Math.cos(rad) * (svgRadius + 4);
-            const y1 = center + Math.sin(rad) * (svgRadius + 4);
-            const x2 = center + Math.cos(rad) * 140;
-            const y2 = center + Math.sin(rad) * 140;
-            
-            // Flowing particle along line
-            const flowProgress = (flowOffset / 40);
-            const arrowDist = (svgRadius + 8) + flowProgress * (135 - svgRadius);
-            const arrowX = center + Math.cos(rad) * (isPositive ? arrowDist : (140 - (arrowDist - svgRadius)));
-            const arrowY = center + Math.sin(rad) * (isPositive ? arrowDist : (140 - (arrowDist - svgRadius)));
+              {/* Radial Electric Field Lines */}
+              {angles.map((deg, i) => {
+                const rad = (deg * Math.PI) / 180;
+                const x1 = center + Math.cos(rad) * (svgRadius + 4);
+                const y1 = center + Math.sin(rad) * (svgRadius + 4);
+                const x2 = center + Math.cos(rad) * 140;
+                const y2 = center + Math.sin(rad) * 140;
 
-            return (
-              <g key={i}>
-                <line
-                  x1={x1}
-                  y1={y1}
-                  x2={x2}
-                  y2={y2}
-                  className="stroke-[#941C2F] dark:stroke-[#FF9FAE]"
-                  strokeWidth="1.5"
-                  strokeDasharray="4 2"
-                  opacity={Math.abs(charge) > 0 ? 0.75 : 0.2}
-                />
-                {/* Arrowhead / pulse */}
-                {animating && Math.abs(charge) > 0 && (
-                  <circle
-                    cx={arrowX}
-                    cy={arrowY}
-                    r={2.5}
-                    className="fill-[#941C2F] dark:fill-[#FF9FAE]"
-                  />
-                )}
-                <line
-                  x1={x2}
-                  y1={y2}
-                  x2={x2 + Math.cos(rad) * 4}
-                  y2={y2 + Math.sin(rad) * 4}
-                  className="stroke-[#941C2F] dark:stroke-[#FF9FAE]"
-                  strokeWidth="2"
-                />
-              </g>
-            );
-          })}
+                // Flowing particle along line
+                const flowProgress = flowOffset / 40;
+                const arrowDist = svgRadius + 8 + flowProgress * (135 - svgRadius);
+                const arrowX =
+                  center + Math.cos(rad) * (isPositive ? arrowDist : 140 - (arrowDist - svgRadius));
+                const arrowY =
+                  center + Math.sin(rad) * (isPositive ? arrowDist : 140 - (arrowDist - svgRadius));
 
-          {/* Conductor Body Circle */}
-          <circle
-            cx={center}
-            cy={center}
-            r={svgRadius}
-            fill="url(#conductorGrad)"
-            stroke="#546C37"
-            strokeWidth="3"
-            className="cursor-pointer transition-all duration-300 dark:stroke-[#6E8F47]"
-            onClick={() => setSelectedZone('surface')}
-          />
+                return (
+                  <g key={i}>
+                    <line
+                      x1={x1}
+                      y1={y1}
+                      x2={x2}
+                      y2={y2}
+                      className="stroke-[#941C2F] dark:stroke-[#FF9FAE]"
+                      strokeWidth="1.5"
+                      strokeDasharray="4 2"
+                      opacity={Math.abs(charge) > 0 ? 0.75 : 0.2}
+                    />
+                    {/* Arrowhead / pulse */}
+                    {animating && Math.abs(charge) > 0 && (
+                      <circle
+                        cx={arrowX}
+                        cy={arrowY}
+                        r={2.5}
+                        className="fill-[#941C2F] dark:fill-[#FF9FAE]"
+                      />
+                    )}
+                    <line
+                      x1={x2}
+                      y1={y2}
+                      x2={x2 + Math.cos(rad) * 4}
+                      y2={y2 + Math.sin(rad) * 4}
+                      className="stroke-[#941C2F] dark:stroke-[#FF9FAE]"
+                      strokeWidth="2"
+                    />
+                  </g>
+                );
+              })}
 
-          {/* Internal Gaussian Surface (dashed red circle at r < R) */}
-          <circle
-            cx={center}
-            cy={center}
-            r={svgRadius * 0.55}
-            fill="none"
-            stroke="#941C2F"
-            strokeWidth="1.5"
-            strokeDasharray="3 3"
-            className="cursor-pointer dark:stroke-[#FF9FAE]"
-            onClick={() => setSelectedZone('interior')}
-          />
-
-          {/* Surface Charges (+ or - signs along the perimeter) */}
-          {angles.map((deg, i) => {
-            const rad = (deg * Math.PI) / 180;
-            const cx = center + Math.cos(rad) * svgRadius;
-            const cy = center + Math.sin(rad) * svgRadius;
-            return (
-              <g key={`sign-${i}`}>
-                <circle cx={cx} cy={cy} r={6} fill={isPositive ? '#FA8989' : '#93C5FD'} stroke="#3D121A" strokeWidth="1" />
-                <text
-                  x={cx}
-                  y={cy + 3.5}
-                  textAnchor="middle"
-                  fontSize="9"
-                  fontWeight="bold"
-                  fill="#3D121A"
-                >
-                  {isPositive ? '+' : '−'}
-                </text>
-              </g>
-            );
-          })}
-
-          {/* Center text annotations */}
-          <text
-            x={center}
-            y={center - 10}
-            textAnchor="middle"
-            className="font-bold text-[13px] fill-[#941C2F] dark:fill-[#FF9FAE] font-['Space_Grotesk']"
-          >
-            E = 0 interior
-          </text>
-          <text
-            x={center}
-            y={center + 5}
-            textAnchor="middle"
-            className="text-[9px] fill-[#546C37] dark:fill-[#CFE3A8] font-medium"
-          >
-            Q_enc = 0 (r &lt; R)
-          </text>
-          <text
-            x={center}
-            y={center + 18}
-            textAnchor="middle"
-            className="text-[9px] fill-[#546C37] dark:fill-[#CFE3A8] font-semibold"
-          >
-            V = {vSurface_kV} kV (Cte)
-          </text>
-
-          {/* Exterior label */}
-          <text
-            x={240}
-            y={50}
-            className="text-[9px] font-semibold fill-[#941C2F] dark:fill-[#FF9FAE]"
-          >
-            E(r) ∝ 1/r²
-          </text>
-        </svg>
-
-        {/* Dynamic Zone Inspector Box */}
-        <div className="w-full bg-white/95 dark:bg-[#16241A]/95 rounded-xl p-2.5 mt-1 border border-[#ADCA88]/30 dark:border-[#3C5A40]/30 flex flex-wrap items-center justify-between text-xs gap-1">
-          <div className="flex items-center gap-1.5">
-            <span className="font-semibold text-[#546C37] dark:text-[#CFE3A8]">Zona evaluada:</span>
-            <div className="flex gap-1 text-[11px]">
-              <button
-                onClick={() => setSelectedZone('interior')}
-                className={`px-2 py-0.5 rounded-full transition-colors cursor-pointer ${
-                  selectedZone === 'interior' ? 'bg-[#941C2F] dark:bg-[#C0334A] text-white font-bold' : 'bg-[#D6E3B1]/50 dark:bg-[#24402B]/50 text-[#546C37] dark:text-[#CFE3A8]'
-                }`}
-              >
-                r &lt; R (Interior)
-              </button>
-              <button
+              {/* Conductor Body Circle */}
+              <circle
+                cx={center}
+                cy={center}
+                r={svgRadius}
+                fill="url(#conductorGrad)"
+                stroke="#546C37"
+                strokeWidth="3"
+                className="cursor-pointer transition-all duration-300 dark:stroke-[#6E8F47]"
                 onClick={() => setSelectedZone('surface')}
-                className={`px-2 py-0.5 rounded-full transition-colors cursor-pointer ${
-                  selectedZone === 'surface' ? 'bg-[#941C2F] dark:bg-[#C0334A] text-white font-bold' : 'bg-[#D6E3B1]/50 dark:bg-[#24402B]/50 text-[#546C37] dark:text-[#CFE3A8]'
-                }`}
+              />
+
+              {/* Internal Gaussian Surface (dashed red circle at r < R) */}
+              <circle
+                cx={center}
+                cy={center}
+                r={svgRadius * 0.55}
+                fill="none"
+                stroke="#941C2F"
+                strokeWidth="1.5"
+                strokeDasharray="3 3"
+                className="cursor-pointer dark:stroke-[#FF9FAE]"
+                onClick={() => setSelectedZone('interior')}
+              />
+
+              {/* Surface Charges (+ or - signs along the perimeter) */}
+              {angles.map((deg, i) => {
+                const rad = (deg * Math.PI) / 180;
+                const cx = center + Math.cos(rad) * svgRadius;
+                const cy = center + Math.sin(rad) * svgRadius;
+                return (
+                  <g key={`sign-${i}`}>
+                    <circle
+                      cx={cx}
+                      cy={cy}
+                      r={6}
+                      fill={isPositive ? '#FA8989' : '#93C5FD'}
+                      stroke="#3D121A"
+                      strokeWidth="1"
+                    />
+                    <text
+                      x={cx}
+                      y={cy + 3.5}
+                      textAnchor="middle"
+                      fontSize="9"
+                      fontWeight="bold"
+                      fill="#3D121A"
+                    >
+                      {isPositive ? '+' : '−'}
+                    </text>
+                  </g>
+                );
+              })}
+
+              {/* Center text annotations */}
+              <text
+                x={center}
+                y={center - 10}
+                textAnchor="middle"
+                className="font-bold text-[13px] fill-[#941C2F] dark:fill-[#FF9FAE] font-['Space_Grotesk']"
               >
-                r = R (Borde)
-              </button>
-              <button
-                onClick={() => setSelectedZone('exterior')}
-                className={`px-2 py-0.5 rounded-full transition-colors cursor-pointer ${
-                  selectedZone === 'exterior' ? 'bg-[#941C2F] dark:bg-[#C0334A] text-white font-bold' : 'bg-[#D6E3B1]/50 dark:bg-[#24402B]/50 text-[#546C37] dark:text-[#CFE3A8]'
-                }`}
+                E = 0 interior
+              </text>
+              <text
+                x={center}
+                y={center + 5}
+                textAnchor="middle"
+                className="text-[9px] fill-[#546C37] dark:fill-[#CFE3A8] font-medium"
               >
-                r &gt; R (Exterior)
-              </button>
+                Q_enc = 0 (r &lt; R)
+              </text>
+              <text
+                x={center}
+                y={center + 18}
+                textAnchor="middle"
+                className="text-[9px] fill-[#546C37] dark:fill-[#CFE3A8] font-semibold"
+              >
+                V = {vSurface_kV} kV (Cte)
+              </text>
+
+              {/* Exterior label */}
+              <text
+                x={240}
+                y={50}
+                className="text-[9px] font-semibold fill-[#941C2F] dark:fill-[#FF9FAE]"
+              >
+                E(r) ∝ 1/r²
+              </text>
+            </svg>
+          </div>
+
+          {/* Dynamic Zone Inspector Box */}
+          <div className="w-full min-w-0 bg-[#FFFBD9]/75 dark:bg-[#0F1A0F]/80 rounded-2xl p-3 border border-[#ADCA88]/40 dark:border-[#3C5A40]/40 space-y-2.5 text-xs">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="font-semibold text-[#546C37] dark:text-[#CFE3A8]">Zona evaluada:</span>
+              <div className="flex flex-wrap gap-1.5 w-full sm:w-auto">
+                <button
+                  type="button"
+                  onClick={() => setSelectedZone('interior')}
+                  aria-pressed={selectedZone === 'interior'}
+                  className={`flex-1 sm:flex-initial min-h-[40px] px-3 py-1.5 rounded-xl text-[11px] transition-colors cursor-pointer ${
+                    selectedZone === 'interior'
+                      ? 'bg-[#941C2F] dark:bg-[#C0334A] text-white font-bold'
+                      : 'bg-[#D6E3B1]/60 dark:bg-[#24402B]/60 text-[#546C37] dark:text-[#CFE3A8]'
+                  }`}
+                >
+                  r &lt; R (Interior)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedZone('surface')}
+                  aria-pressed={selectedZone === 'surface'}
+                  className={`flex-1 sm:flex-initial min-h-[40px] px-3 py-1.5 rounded-xl text-[11px] transition-colors cursor-pointer ${
+                    selectedZone === 'surface'
+                      ? 'bg-[#941C2F] dark:bg-[#C0334A] text-white font-bold'
+                      : 'bg-[#D6E3B1]/60 dark:bg-[#24402B]/60 text-[#546C37] dark:text-[#CFE3A8]'
+                  }`}
+                >
+                  r = R (Borde)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedZone('exterior')}
+                  aria-pressed={selectedZone === 'exterior'}
+                  className={`flex-1 sm:flex-initial min-h-[40px] px-3 py-1.5 rounded-xl text-[11px] transition-colors cursor-pointer ${
+                    selectedZone === 'exterior'
+                      ? 'bg-[#941C2F] dark:bg-[#C0334A] text-white font-bold'
+                      : 'bg-[#D6E3B1]/60 dark:bg-[#24402B]/60 text-[#546C37] dark:text-[#CFE3A8]'
+                  }`}
+                >
+                  r &gt; R (Exterior)
+                </button>
+              </div>
+            </div>
+
+            <div className="w-full text-[#546C37] dark:text-[#CFE3A8] font-mono text-xs tabular-nums bg-white/95 dark:bg-[#16241A]/95 px-3 py-2 rounded-xl border border-[#ADCA88]/40 dark:border-[#3C5A40]/40 break-words">
+              {selectedZone === 'interior' && 'E = 0 N/C | ρ = 0'}
+              {selectedZone === 'surface' && `σ = ${sigmaMicroC_m2} µC/m² | E = ${eSurface_kN_C} kN/C`}
+              {selectedZone === 'exterior' && `E(r) = k·Q / r² (Radial)`}
             </div>
           </div>
-
-          <div className="text-[#546C37] dark:text-[#CFE3A8] font-mono text-[11px] bg-[#FFFBD9] dark:bg-[#0F1A0F] px-2 py-0.5 rounded border border-[#ADCA88]/40 dark:border-[#3C5A40]/40">
-            {selectedZone === 'interior' && 'E = 0 N/C | ρ = 0'}
-            {selectedZone === 'surface' && `σ = ${sigmaMicroC_m2} µC/m² | E = ${eSurface_kN_C} kN/C`}
-            {selectedZone === 'exterior' && `E(r) = k·Q / r² (Radial)`}
-          </div>
         </div>
-      </div>
 
-      {/* Sliders & Controls */}
-      <div className="mt-3 space-y-2.5">
-        <div className="flex items-center justify-between text-xs">
-          <span className="font-medium text-[#546C37] dark:text-[#CFE3A8]">Radio esfera R:</span>
-          <div className="flex items-center gap-3">
+        {/* Sliders & Controls Panel */}
+        <div
+          className={`w-full min-w-0 bg-[#FFFBD9]/55 dark:bg-[#0F1A0F]/65 rounded-2xl p-3 sm:p-4 border border-[#ADCA88]/35 dark:border-[#3C5A40]/35 space-y-4 ${
+            compact ? 'col-span-1' : 'col-span-1 lg:col-span-5'
+          }`}
+        >
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between gap-2 text-xs">
+              <label htmlFor="gauss-radius" className="font-semibold text-[#546C37] dark:text-[#CFE3A8]">
+                Radio esfera R
+              </label>
+              <span className="font-bold text-[#546C37] dark:text-[#CFE3A8] font-mono tabular-nums">
+                {radius} cm
+              </span>
+            </div>
             <input
+              id="gauss-radius"
               type="range"
               min="8"
               max="25"
               value={radius}
               onChange={(e) => setRadius(Number(e.target.value))}
-              className="accent-[#546C37] dark:accent-[#8FB35E] w-28 cursor-pointer"
+              aria-label="Radio de la esfera conductora en centímetros"
+              className="accent-[#546C37] dark:accent-[#8FB35E] w-full h-9 cursor-pointer"
             />
-            <span className="font-bold text-[#546C37] dark:text-[#CFE3A8] w-12 text-right font-['Pixelify_Sans']">
-              {radius} cm
-            </span>
+            <div className="flex justify-between text-[10px] font-mono text-[#546C37]/70 dark:text-[#CFE3A8]/70">
+              <span>8 cm</span>
+              <span>25 cm</span>
+            </div>
           </div>
-        </div>
 
-        <div className="flex items-center justify-between text-xs">
-          <span className="font-medium text-[#546C37] dark:text-[#CFE3A8]">Carga neta Q:</span>
-          <div className="flex items-center gap-3">
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between gap-2 text-xs">
+              <label htmlFor="gauss-charge" className="font-semibold text-[#546C37] dark:text-[#CFE3A8]">
+                Carga neta Q
+              </label>
+              <span className="font-bold text-[#941C2F] dark:text-[#FF9FAE] font-mono tabular-nums">
+                {charge > 0 ? `+${charge}` : charge} µC
+              </span>
+            </div>
             <input
+              id="gauss-charge"
               type="range"
               min="-10"
               max="10"
               step="0.5"
               value={charge}
               onChange={(e) => setCharge(Number(e.target.value))}
-              className="accent-[#FA8989] w-28 cursor-pointer"
+              aria-label="Carga neta en microcoulombs"
+              className="accent-[#FA8989] w-full h-9 cursor-pointer"
             />
-            <span className="font-bold text-[#941C2F] dark:text-[#FF9FAE] w-12 text-right font-['Pixelify_Sans']">
-              {charge > 0 ? `+${charge}` : charge} µC
-            </span>
+            <div className="flex justify-between text-[10px] font-mono text-[#546C37]/70 dark:text-[#CFE3A8]/70">
+              <span>−10 µC</span>
+              <span>0</span>
+              <span>+10 µC</span>
+            </div>
           </div>
-        </div>
 
-        {/* Buttons row */}
-        <div className="flex items-center gap-2 pt-1">
-          <button
-            onClick={() => setCharge((prev) => -prev)}
-            className="flex-1 py-1.5 px-3 bg-[#D6E3B1] dark:bg-[#24402B] hover:bg-[#ADCA88] dark:hover:bg-[#3C5A40] text-[#546C37] dark:text-[#CFE3A8] rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-          >
-            <RefreshCw className="w-3.5 h-3.5" />
-            Invertir polaridad ({charge >= 0 ? '−' : '+'})
-          </button>
-          <button
-            onClick={() => setAnimating(!animating)}
-            className="flex-1 py-1.5 px-3 bg-[#941C2F] dark:bg-[#C0334A] hover:bg-[#941C2F]/90 dark:hover:bg-[#C0334A]/90 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors shadow-sm cursor-pointer"
-          >
-            {animating ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
-            {animating ? 'Pausar Flujo' : 'Animar Flujo'}
-          </button>
+          {/* Summary Readout */}
+          <div className="grid grid-cols-2 gap-2 pt-1 border-t border-[#ADCA88]/30 dark:border-[#3C5A40]/30 text-xs font-mono tabular-nums">
+            <div className="bg-white/90 dark:bg-[#16241A]/90 rounded-xl p-2.5 border border-[#ADCA88]/40 dark:border-[#3C5A40]/40 min-w-0">
+              <span className="block text-[10px] text-[#546C37]/75 dark:text-[#CFE3A8]/75">Potencial (V)</span>
+              <span className="block font-bold text-[#546C37] dark:text-[#CFE3A8] mt-0.5 break-words">
+                {vSurface_kV} kV
+              </span>
+            </div>
+            <div className="bg-white/90 dark:bg-[#16241A]/90 rounded-xl p-2.5 border border-[#ADCA88]/40 dark:border-[#3C5A40]/40 min-w-0">
+              <span className="block text-[10px] text-[#546C37]/75 dark:text-[#CFE3A8]/75">Densidad (σ)</span>
+              <span className="block font-bold text-[#941C2F] dark:text-[#FF9FAE] mt-0.5 break-words">
+                {sigmaMicroC_m2} µC/m²
+              </span>
+            </div>
+          </div>
+
+          {/* Buttons row */}
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            <button
+              type="button"
+              onClick={() => setCharge((prev) => -prev)}
+              className="flex-1 min-w-[140px] min-h-[44px] py-2 px-3 bg-[#D6E3B1] dark:bg-[#24402B] hover:bg-[#ADCA88] dark:hover:bg-[#3C5A40] text-[#546C37] dark:text-[#CFE3A8] rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <RefreshCw className="w-3.5 h-3.5 shrink-0" />
+              <span>Invertir polaridad ({charge >= 0 ? '−' : '+'})</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setAnimating(!animating)}
+              className="flex-1 min-w-[140px] min-h-[44px] py-2 px-3 bg-[#941C2F] dark:bg-[#C0334A] hover:bg-[#941C2F]/90 dark:hover:bg-[#C0334A]/90 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors shadow-sm cursor-pointer"
+            >
+              {animating ? <Pause className="w-3.5 h-3.5 shrink-0" /> : <Play className="w-3.5 h-3.5 shrink-0" />}
+              <span>{animating ? 'Pausar Flujo' : 'Animar Flujo'}</span>
+            </button>
+          </div>
         </div>
       </div>
     </div>

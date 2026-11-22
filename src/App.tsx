@@ -21,6 +21,7 @@ import {
   deleteSessionFromStorage,
   uploadSessionImage,
   signInWithGoogle,
+  signInAsGuest,
   signOutUser,
   subscribeToAuth,
   checkRedirectResult,
@@ -29,8 +30,18 @@ import {
 import { Home, MessageSquare, Activity, BookOpen } from 'lucide-react';
 import { useTheme } from './hooks/useTheme';
 import { userAskedForDiagram } from './utils/diagramUrl';
+import { getAuthApiHeaders } from './utils/sessionClient';
 
 type AuthStatus = 'loading' | 'signedOut' | 'guest' | 'google' | 'verifyEmail';
+
+const DIAGRAMS_ENABLED = false;
+
+function detectImageMimeType(imageBase64?: string): string | undefined {
+  if (!imageBase64) return undefined;
+  const match = imageBase64.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,/i);
+  if (match) return match[1].toLowerCase();
+  return 'image/jpeg';
+}
 
 export default function App() {
   const { toggleTheme, isDark } = useTheme();
@@ -62,6 +73,14 @@ export default function App() {
   const currentSessionIdRef = useRef<string>('');
   const messagesRef = useRef<ChatMessage[]>([]);
   const sessionsRef = useRef<ChatSession[]>([]);
+  const activeRequestAbortRef = useRef<AbortController | null>(null);
+
+  const handleStopGeneration = () => {
+    if (activeRequestAbortRef.current) {
+      activeRequestAbortRef.current.abort();
+      activeRequestAbortRef.current = null;
+    }
+  };
 
   useEffect(() => {
     currentSessionIdRef.current = currentSessionId;
@@ -80,7 +99,7 @@ export default function App() {
     let isMounted = true;
 
     checkRedirectResult().then((user) => {
-      if (user && isMounted) {
+      if (user && !user.isAnonymous && isMounted) {
         if (needsEmailVerification(user)) {
           setCurrentUser(user);
           setAuthStatus('verifyEmail');
@@ -94,6 +113,12 @@ export default function App() {
 
     const unsubscribe = subscribeToAuth((user) => {
       if (!isMounted) return;
+      if (user && user.isAnonymous) {
+        setCurrentUser(user);
+        setAuthStatus((prev) => (prev === 'signedOut' ? 'signedOut' : 'guest'));
+        setAuthError(null);
+        return;
+      }
       if (user && needsEmailVerification(user)) {
         if (guestBackupRef.current) {
           guestBackupRef.current = null;
@@ -120,7 +145,7 @@ export default function App() {
         setAuthError(null);
       } else {
         setCurrentUser(null);
-        setAuthStatus((prev) => (prev === 'guest' ? 'guest' : 'signedOut'));
+        setAuthStatus('signedOut');
       }
     });
 
@@ -200,9 +225,17 @@ export default function App() {
     }
   };
 
-  const handleGuestLogin = () => {
+  const handleGuestLogin = async () => {
     setIsSigningIn(true);
-    setTimeout(() => {
+    setAuthError(null);
+    try {
+      const res = await signInAsGuest();
+      if (!res.success) {
+        setAuthError(
+          res.errorMessage || 'No pudimos iniciar el modo invitado. Inténtalo de nuevo.'
+        );
+        return;
+      }
       guestBackupRef.current = null;
       setHasGuestBackup(false);
       sessionsRef.current = [];
@@ -211,10 +244,12 @@ export default function App() {
       setSessions([]);
       setMessages([]);
       setCurrentSessionId('');
-      setAuthError(null);
-      setIsSigningIn(false);
       setAuthStatus('guest');
-    }, 400);
+    } catch {
+      setAuthError('No pudimos iniciar el modo invitado. Revisa tu conexión e inténtalo de nuevo.');
+    } finally {
+      setIsSigningIn(false);
+    }
   };
 
   const handleRequestSignInFromGuest = () => {
@@ -239,7 +274,14 @@ export default function App() {
     setAuthStatus('signedOut');
   };
 
-  const handleBackToGuest = () => {
+  const handleBackToGuest = async () => {
+    if (!auth.currentUser) {
+      const res = await signInAsGuest();
+      if (!res.success) {
+        setAuthError(res.errorMessage || 'No pudimos reanudar tu sesión de invitado.');
+        return;
+      }
+    }
     const backup = guestBackupRef.current;
     if (backup) {
       sessionsRef.current = backup.sessions;
@@ -388,22 +430,44 @@ export default function App() {
 
     const isVisionRequest = isVision || Boolean(imageBase64);
 
+    if (activeRequestAbortRef.current) {
+      activeRequestAbortRef.current.abort();
+    }
+    const requestAbortController = new AbortController();
+    activeRequestAbortRef.current = requestAbortController;
+
+    let activeBotId: string | null = null;
+    let activeBotTime = '';
+    let activeBotCreatedAt = '';
+    let accumulatedStreamText = '';
+    let rafId: number | null = null;
+
     try {
       if (isVisionRequest) {
         // Non-streaming vision analysis flow (/api/vision)
+        const visionHeaders = await getAuthApiHeaders();
         const res = await fetch('/api/vision', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: visionHeaders,
           body: JSON.stringify({
             prompt: text,
             imageBase64,
-            imageMimeType: imageBase64?.startsWith('data:image/png') ? 'image/png' : 'image/jpeg',
+            imageMimeType: detectImageMimeType(imageBase64),
           }),
+          signal: requestAbortController.signal,
         });
 
         if (!res.ok) {
           const errJson = await res.json().catch(() => ({}));
-          throw new Error(errJson.error || `Error ${res.status} en análisis visual`);
+          const fallbackMsg =
+            res.status === 401
+              ? 'Tu sesión no está autorizada o expiró. Recarga la página o vuelve a iniciar sesión.'
+              : res.status === 429
+                ? 'Has alcanzado el límite de consultas por minuto. Espera unos segundos e inténtalo de nuevo.'
+                : `Error ${res.status} en análisis visual`;
+          const err = new Error(errJson.error || fallbackMsg);
+          (err as any).statusCode = res.status;
+          throw err;
         }
 
         const data = await res.json();
@@ -418,13 +482,10 @@ export default function App() {
           sender: 'bot',
           text: data.text,
           quickChips: data.quickChips || [],
-          ...(data.simulationType !== undefined ? { simulationType: data.simulationType } : {}),
-          ...(data.simulationParams !== undefined ? { simulationParams: data.simulationParams } : {}),
-          ...(data.simulationAdjusted !== undefined ? { simulationAdjusted: data.simulationAdjusted } : {}),
           timestamp: botTime,
           createdAt: botCreatedAt,
           ...(data.diagramPrompt !== undefined ? { diagramPrompt: data.diagramPrompt } : {}),
-          diagramLoading: Boolean(data.diagramPrompt) && userAskedForDiagram(text),
+          diagramLoading: DIAGRAMS_ENABLED && Boolean(data.diagramPrompt) && userAskedForDiagram(text),
         };
 
         let nextMessageCount = baseMessages.length + 2;
@@ -440,7 +501,7 @@ export default function App() {
         saveMessageToStorage(targetSessionId, botMsg).catch(() => {});
 
         // Diagram fetching for vision result if proposed
-        if (data.diagramPrompt && userAskedForDiagram(text)) {
+        if (DIAGRAMS_ENABLED && data.diagramPrompt && userAskedForDiagram(text)) {
           triggerDiagramGeneration(botMsg.id, data.diagramPrompt, botMsg);
         }
 
@@ -456,24 +517,37 @@ export default function App() {
           history.shift();
         }
 
+        const chatBody: Record<string, any> = {
+          prompt: text,
+          history,
+        };
+        if (imageBase64) {
+          chatBody.imageBase64 = imageBase64;
+          chatBody.imageMimeType = detectImageMimeType(imageBase64);
+        }
+
+        const chatHeaders = await getAuthApiHeaders();
         const res = await fetch('/api/chat', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            prompt: text,
-            history,
-            imageBase64,
-            imageMimeType: imageBase64?.startsWith('data:image/png') ? 'image/png' : 'image/jpeg',
-          }),
+          headers: chatHeaders,
+          body: JSON.stringify(chatBody),
+          signal: requestAbortController.signal,
         });
 
         if (!res.ok) {
-          let errMessage = `Error de servidor (${res.status})`;
+          let errMessage =
+            res.status === 401
+              ? 'Tu sesión no está autorizada o expiró. Recarga la página o vuelve a iniciar sesión.'
+              : res.status === 429
+                ? 'Has alcanzado el límite de consultas por minuto. Espera unos segundos antes de enviar otro mensaje.'
+                : `Error de servidor (${res.status})`;
           try {
             const errJson = await res.json();
             if (errJson.error) errMessage = errJson.error;
           } catch (_) {}
-          throw new Error(errMessage);
+          const err = new Error(errMessage);
+          (err as any).statusCode = res.status;
+          throw err;
         }
 
         const botId = `bot-${Date.now()}`;
@@ -481,6 +555,10 @@ export default function App() {
         const botCreatedAt = new Date(
           Math.max(Date.now(), Date.parse(userCreatedAt) + 1)
         ).toISOString();
+
+        activeBotId = botId;
+        activeBotTime = botTime;
+        activeBotCreatedAt = botCreatedAt;
 
         const initialBotMsg: ChatMessage = {
           id: botId,
@@ -498,10 +576,9 @@ export default function App() {
         }
 
         const decoder = new TextDecoder();
-        let accumulatedStreamText = '';
         let sseBuffer = '';
-        let rafId: number | null = null;
         let updateScheduled = false;
+        let receivedDoneEvent = false;
 
         // Group live UI updates with requestAnimationFrame to prevent re-render bottlenecks
         const scheduleUiUpdate = (currentText: string) => {
@@ -522,6 +599,78 @@ export default function App() {
           });
         };
 
+        const processSseLine = (line: string) => {
+          const trimmed = line.trim();
+          if (!trimmed || !trimmed.startsWith('data:')) return;
+          const payloadRaw = trimmed.slice(5).trim();
+          if (!payloadRaw) return;
+
+          // Isolate JSON.parse from server error handling so no server error mentioning "JSON" is swallowed
+          let eventData: any;
+          try {
+            eventData = JSON.parse(payloadRaw);
+          } catch (parseErr) {
+            console.warn('[Chat SSE] Ignorando evento SSE con JSON malformado:', parseErr);
+            return;
+          }
+
+          if (eventData.type === 'chunk' && eventData.text) {
+            accumulatedStreamText += eventData.text;
+            scheduleUiUpdate(accumulatedStreamText);
+          } else if (eventData.type === 'done') {
+            receivedDoneEvent = true;
+            if (rafId) {
+              cancelAnimationFrame(rafId);
+              rafId = null;
+            }
+            updateScheduled = false;
+
+            const finalCleanText = eventData.text || accumulatedStreamText;
+            const finalBotMsg: ChatMessage = {
+              id: botId,
+              sessionId: targetSessionId,
+              sender: 'bot',
+              text: finalCleanText,
+              quickChips: eventData.quickChips || [],
+              timestamp: botTime,
+              createdAt: botCreatedAt,
+              ...(eventData.diagramPrompt !== undefined ? { diagramPrompt: eventData.diagramPrompt } : {}),
+              diagramLoading: DIAGRAMS_ENABLED && Boolean(eventData.diagramPrompt) && userAskedForDiagram(text),
+            };
+
+            let nextMessageCount = baseMessages.length + 2;
+            if (currentSessionIdRef.current === targetSessionId) {
+              const clean = messagesRef.current.filter(
+                (m) => !m.isError && m.sessionId === targetSessionId
+              );
+              const hasUser = clean.some((m) => m.id === userMsg.id);
+              const exists = clean.some((m) => m.id === botId);
+              const next = exists
+                ? clean.map((m) => (m.id === botId ? finalBotMsg : m))
+                : hasUser
+                ? [...clean, finalBotMsg]
+                : [...clean, userMsg, finalBotMsg];
+              messagesRef.current = next;
+              setMessages(next);
+              nextMessageCount = next.length;
+            }
+
+            // Background save of finished bot message
+            saveMessageToStorage(targetSessionId, finalBotMsg).catch(() => {});
+
+            // If diagram prompt was generated, call /api/diagram
+            if (DIAGRAMS_ENABLED && eventData.diagramPrompt && userAskedForDiagram(text)) {
+              triggerDiagramGeneration(botId, eventData.diagramPrompt, finalBotMsg);
+            }
+
+            persistSessionHeader(targetSessionId, finalCleanText, nextMessageCount);
+          } else if (eventData.type === 'error') {
+            const streamErr = new Error(eventData.error || 'Error en streaming de respuesta');
+            (streamErr as any).isServerStreamError = true;
+            throw streamErr;
+          }
+        };
+
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
@@ -531,98 +680,160 @@ export default function App() {
           sseBuffer = lines.pop() || '';
 
           for (const line of lines) {
-            const trimmed = line.trim();
-            if (!trimmed || !trimmed.startsWith('data:')) continue;
-            const payloadRaw = trimmed.slice(5).trim();
-            if (!payloadRaw) continue;
-
-            try {
-              const eventData = JSON.parse(payloadRaw);
-
-              if (eventData.type === 'chunk' && eventData.text) {
-                accumulatedStreamText += eventData.text;
-                scheduleUiUpdate(accumulatedStreamText);
-              } else if (eventData.type === 'done') {
-                if (rafId) cancelAnimationFrame(rafId);
-                updateScheduled = false;
-
-                const finalCleanText = eventData.text || accumulatedStreamText;
-                const finalBotMsg: ChatMessage = {
-                  id: botId,
-                  sessionId: targetSessionId,
-                  sender: 'bot',
-                  text: finalCleanText,
-                  quickChips: eventData.quickChips || [],
-                  ...(eventData.simulationType !== undefined ? { simulationType: eventData.simulationType } : {}),
-                  ...(eventData.simulationParams !== undefined ? { simulationParams: eventData.simulationParams } : {}),
-                  ...(eventData.simulationAdjusted !== undefined ? { simulationAdjusted: eventData.simulationAdjusted } : {}),
-                  timestamp: botTime,
-                  createdAt: botCreatedAt,
-                  ...(eventData.diagramPrompt !== undefined ? { diagramPrompt: eventData.diagramPrompt } : {}),
-                  diagramLoading: Boolean(eventData.diagramPrompt) && userAskedForDiagram(text),
-                };
-
-                let nextMessageCount = baseMessages.length + 2;
-                if (currentSessionIdRef.current === targetSessionId) {
-                  const clean = messagesRef.current.filter(
-                    (m) => !m.isError && m.sessionId === targetSessionId
-                  );
-                  const hasUser = clean.some((m) => m.id === userMsg.id);
-                  const exists = clean.some((m) => m.id === botId);
-                  const next = exists
-                    ? clean.map((m) => (m.id === botId ? finalBotMsg : m))
-                    : hasUser
-                    ? [...clean, finalBotMsg]
-                    : [...clean, userMsg, finalBotMsg];
-                  messagesRef.current = next;
-                  setMessages(next);
-                  nextMessageCount = next.length;
-                }
-
-                // Background save of finished bot message
-                saveMessageToStorage(targetSessionId, finalBotMsg).catch(() => {});
-
-                // If diagram prompt was generated, call /api/diagram
-                if (eventData.diagramPrompt && userAskedForDiagram(text)) {
-                  triggerDiagramGeneration(botId, eventData.diagramPrompt, finalBotMsg);
-                }
-
-                persistSessionHeader(targetSessionId, finalCleanText, nextMessageCount);
-              } else if (eventData.type === 'error') {
-                throw new Error(eventData.error || 'Error en streaming de respuesta');
-              }
-            } catch (pErr: any) {
-              if (pErr?.message && !pErr.message.includes('JSON')) {
-                throw pErr;
-              }
-            }
+            processSseLine(line);
           }
+        }
+
+        // Flush any trailing bytes from the TextDecoder and remaining SSE buffer
+        sseBuffer += decoder.decode();
+        if (sseBuffer.trim()) {
+          for (const line of sseBuffer.split('\n')) {
+            processSseLine(line);
+          }
+        }
+
+        if (rafId) {
+          cancelAnimationFrame(rafId);
+          rafId = null;
+        }
+
+        // Explicitly verify that the stream closed with a 'done' event
+        if (!receivedDoneEvent) {
+          if (requestAbortController.signal.aborted) {
+            const abortErr = new Error('Respuesta detenida por el estudiante.');
+            abortErr.name = 'AbortError';
+            throw abortErr;
+          }
+          const interruptedErr = new Error(
+            accumulatedStreamText.trim().length > 0
+              ? 'La conexión se interrumpió antes de que Newton terminara la respuesta. El texto anterior puede estar incompleto; pulsa Reintentar para generarla de nuevo.'
+              : 'La conexión se interrumpió antes de recibir la respuesta completa de Newton. Pulsa Reintentar.'
+          );
+          (interruptedErr as any).isStreamInterrupted = true;
+          throw interruptedErr;
         }
       }
     } catch (err: any) {
+      if (rafId) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
+
+      const wasUserStopped = requestAbortController.signal.aborted || err?.name === 'AbortError';
+      if (wasUserStopped) {
+        if (accumulatedStreamText.trim().length > 0 && activeBotId) {
+          const stoppedText = `${accumulatedStreamText.trim()}\n\n*(Respuesta detenida por el estudiante.)*`;
+          const stoppedBotMsg: ChatMessage = {
+            id: activeBotId,
+            sessionId: targetSessionId,
+            sender: 'bot',
+            text: stoppedText,
+            quickChips: [],
+            timestamp: activeBotTime,
+            createdAt: activeBotCreatedAt,
+          };
+          let nextMessageCount = baseMessages.length + 2;
+          if (currentSessionIdRef.current === targetSessionId) {
+            const clean = messagesRef.current.filter(
+              (m) => !m.isError && m.sessionId === targetSessionId
+            );
+            const hasUser = clean.some((m) => m.id === userMsg.id);
+            const exists = clean.some((m) => m.id === activeBotId);
+            const next = exists
+              ? clean.map((m) => (m.id === activeBotId ? stoppedBotMsg : m))
+              : hasUser
+              ? [...clean, stoppedBotMsg]
+              : [...clean, userMsg, stoppedBotMsg];
+            messagesRef.current = next;
+            setMessages(next);
+            nextMessageCount = next.length;
+          }
+          saveMessageToStorage(targetSessionId, stoppedBotMsg).catch(() => {});
+          persistSessionHeader(targetSessionId, stoppedText, nextMessageCount);
+        } else {
+          const stopTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          const stopNoticeMsg: ChatMessage = {
+            id: `bot-err-${Date.now()}`,
+            sessionId: targetSessionId,
+            sender: 'bot',
+            text: 'Respuesta detenida. Puedes enviar una nueva consulta o pulsar Reintentar.',
+            isError: true,
+            retryPrompt: text,
+            retryImageBase64: imageBase64,
+            timestamp: stopTime,
+            createdAt: new Date(Math.max(Date.now(), Date.parse(userCreatedAt) + 1)).toISOString(),
+          };
+          if (currentSessionIdRef.current === targetSessionId) {
+            const clean = messagesRef.current.filter(
+              (m) => !m.isError && m.sessionId === targetSessionId
+            );
+            const hasUser = clean.some((m) => m.id === userMsg.id);
+            const next = hasUser ? [...clean, stopNoticeMsg] : [...clean, userMsg, stopNoticeMsg];
+            messagesRef.current = next;
+            setMessages(next);
+          }
+        }
+        return;
+      }
+
       console.error('Error contacting Newton AI:', err);
       const errorTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const statusCode = err?.statusCode;
+      const friendlyErrorText =
+        statusCode === 400 ||
+        statusCode === 401 ||
+        statusCode === 403 ||
+        statusCode === 413 ||
+        statusCode === 429 ||
+        err?.isServerStreamError ||
+        err?.isStreamInterrupted
+          ? err.message
+          : 'No pude conectarme con Newton. Revisa tu conexión e inténtalo de nuevo.';
+
       const errorMsg: ChatMessage = {
         id: `bot-err-${Date.now()}`,
         sessionId: targetSessionId,
         sender: 'bot',
-        text: 'No pude conectarme con Newton. Revisa tu conexión e inténtalo de nuevo.',
+        text: friendlyErrorText,
         isError: true,
         retryPrompt: text,
         retryImageBase64: imageBase64,
         timestamp: errorTime,
-        createdAt: new Date(Math.max(Date.now(), Date.parse(userCreatedAt) + 1)).toISOString(),
+        createdAt: new Date(Math.max(Date.now(), Date.parse(userCreatedAt) + 2)).toISOString(),
       };
+
       if (currentSessionIdRef.current === targetSessionId) {
-        const clean = messagesRef.current.filter(
+        let clean = messagesRef.current.filter(
           (m) => !m.isError && m.sessionId === targetSessionId
         );
+        // Preserve any partial streamed content visibly before showing the interruption warning
+        if (err?.isStreamInterrupted && accumulatedStreamText.trim().length > 0 && activeBotId) {
+          const partialBotMsg: ChatMessage = {
+            id: activeBotId,
+            sessionId: targetSessionId,
+            sender: 'bot',
+            text: accumulatedStreamText.trim(),
+            quickChips: [],
+            timestamp: activeBotTime,
+            createdAt: activeBotCreatedAt,
+          };
+          const exists = clean.some((m) => m.id === activeBotId);
+          clean = exists
+            ? clean.map((m) => (m.id === activeBotId ? partialBotMsg : m))
+            : [...clean, partialBotMsg];
+        }
         const hasUser = clean.some((m) => m.id === userMsg.id);
         const next = hasUser ? [...clean, errorMsg] : [...clean, userMsg, errorMsg];
         messagesRef.current = next;
         setMessages(next);
       }
     } finally {
+      if (rafId) {
+        cancelAnimationFrame(rafId);
+      }
+      if (activeRequestAbortRef.current === requestAbortController) {
+        activeRequestAbortRef.current = null;
+      }
       console.timeEnd(timerId);
       setIsLoading(false);
     }
@@ -633,12 +844,15 @@ export default function App() {
     diagramPrompt: string,
     baseBotMsg: ChatMessage
   ) => {
-    fetch('/api/diagram', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt: diagramPrompt }),
-      signal: AbortSignal.timeout(30000),
-    })
+    getAuthApiHeaders()
+      .then((headers) =>
+        fetch('/api/diagram', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ prompt: diagramPrompt }),
+          signal: AbortSignal.timeout(30000),
+        })
+      )
       .then(async (diagramRes) => {
         if (!diagramRes.ok) {
           const errBody = await diagramRes.json().catch(() => ({}));
@@ -649,7 +863,7 @@ export default function App() {
         return diagramRes.json();
       })
       .then(async (diagramData) => {
-        const isAuthenticated = Boolean(auth.currentUser);
+        const isAuthenticated = Boolean(auth.currentUser && !auth.currentUser.isAnonymous);
         if (!isAuthenticated) {
           if (currentSessionIdRef.current === baseBotMsg.sessionId) {
             const next = messagesRef.current.map((m) =>
@@ -798,9 +1012,10 @@ export default function App() {
     }
 
     try {
+      const diagramHeaders = await getAuthApiHeaders();
       const res = await fetch('/api/diagram', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: diagramHeaders,
         body: JSON.stringify({ prompt: diagramPrompt }),
         signal: AbortSignal.timeout(30000),
       });
@@ -812,7 +1027,7 @@ export default function App() {
       }
       const data = await res.json();
 
-      if (!auth.currentUser || !targetSessionId) {
+      if (!auth.currentUser || auth.currentUser.isAnonymous || !targetSessionId) {
         if (currentSessionIdRef.current === targetSessionId) {
           const next = messagesRef.current.map((m) =>
             m.id === messageId
@@ -959,21 +1174,41 @@ export default function App() {
       saveMessageToStorage(newSessionId, userMsg),
     ]);
 
+    if (activeRequestAbortRef.current) {
+      activeRequestAbortRef.current.abort();
+    }
+    const scannerAbortController = new AbortController();
+    activeRequestAbortRef.current = scannerAbortController;
+    let scannerTimedOut = false;
+    const scannerTimeoutId = window.setTimeout(() => {
+      scannerTimedOut = true;
+      scannerAbortController.abort();
+    }, 100000);
+
     try {
+      const scannerHeaders = await getAuthApiHeaders();
       const res = await fetch('/api/vision', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: scannerHeaders,
         body: JSON.stringify({
           prompt: data.prompt,
           imageBase64: data.imageBase64,
-          imageMimeType: data.imageBase64.startsWith('data:image/png') ? 'image/png' : 'image/jpeg',
+          imageMimeType: detectImageMimeType(data.imageBase64),
         }),
-        signal: AbortSignal.timeout(100000),
+        signal: scannerAbortController.signal,
       });
 
       if (!res.ok) {
         const errJson = await res.json().catch(() => ({}));
-        throw new Error(errJson.error || `Error ${res.status} en análisis visual`);
+        const fallbackMsg =
+          res.status === 401
+            ? 'Tu sesión no está autorizada o expiró. Recarga la página o vuelve a iniciar sesión.'
+            : res.status === 429
+              ? 'Has alcanzado el límite de consultas por minuto. Espera unos segundos e inténtalo de nuevo.'
+              : `Error ${res.status} en análisis visual`;
+        const err = new Error(errJson.error || fallbackMsg);
+        (err as any).statusCode = res.status;
+        throw err;
       }
 
       const resData = await res.json();
@@ -982,7 +1217,7 @@ export default function App() {
         Math.max(Date.now(), Date.parse(nowIso) + 1)
       ).toISOString();
       const shouldAutoGenerateDiagram =
-        Boolean(resData.diagramPrompt) && userAskedForDiagram(data.prompt);
+        DIAGRAMS_ENABLED && Boolean(resData.diagramPrompt) && userAskedForDiagram(data.prompt);
 
       const botMsg: ChatMessage = {
         id: `bot-${Date.now()}`,
@@ -990,9 +1225,6 @@ export default function App() {
         sender: 'bot',
         text: resData.text,
         quickChips: resData.quickChips || [],
-        ...(resData.simulationType !== undefined ? { simulationType: resData.simulationType } : {}),
-        ...(resData.simulationParams !== undefined ? { simulationParams: resData.simulationParams } : {}),
-        ...(resData.simulationAdjusted !== undefined ? { simulationAdjusted: resData.simulationAdjusted } : {}),
         timestamp: botTime,
         createdAt: botCreatedAt,
         ...(resData.diagramPrompt !== undefined ? { diagramPrompt: resData.diagramPrompt } : {}),
@@ -1029,16 +1261,26 @@ export default function App() {
         triggerDiagramGeneration(botMsg.id, resData.diagramPrompt, botMsg);
       }
     } catch (err: any) {
-      console.error('Error analyzing scanned image:', err);
+      const wasStoppedByUser = !scannerTimedOut && (scannerAbortController.signal.aborted || err?.name === 'AbortError');
+      if (!wasStoppedByUser) {
+        console.error('Error analyzing scanned image:', err);
+      }
       const errorTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       const errorMsg: ChatMessage = {
         id: `bot-err-${Date.now()}`,
         sessionId: newSessionId,
         sender: 'bot',
-        text:
-          err?.name === 'TimeoutError'
-            ? 'El análisis de la imagen tardó demasiado. Pulsa Reintentar.'
-            : `No pude analizar la imagen. Pulsa Reintentar. Detalle: ${err?.message || 'error desconocido'}`,
+        text: wasStoppedByUser
+          ? 'Análisis detenido por el estudiante. Pulsa Reintentar si deseas volver a analizar la imagen.'
+          : err?.statusCode === 400 ||
+            err?.statusCode === 401 ||
+            err?.statusCode === 403 ||
+            err?.statusCode === 413 ||
+            err?.statusCode === 429
+          ? err.message
+          : scannerTimedOut || err?.name === 'TimeoutError'
+          ? 'El análisis de la imagen tardó demasiado. Pulsa Reintentar.'
+          : `No pude analizar la imagen. Pulsa Reintentar. Detalle: ${err?.message || 'error desconocido'}`,
         isError: true,
         retryPrompt: data.prompt,
         retryImageBase64: data.imageBase64,
@@ -1054,6 +1296,10 @@ export default function App() {
         setMessages(next);
       }
     } finally {
+      window.clearTimeout(scannerTimeoutId);
+      if (activeRequestAbortRef.current === scannerAbortController) {
+        activeRequestAbortRef.current = null;
+      }
       setIsLoading(false);
     }
   };
@@ -1212,6 +1458,7 @@ export default function App() {
             sessions={sessions}
             currentSessionId={currentSessionId}
             onSendMessage={handleSendMessage}
+            onStopGeneration={handleStopGeneration}
             onOpenScanner={() => setIsScannerOpen(true)}
             onOpenVoice={() => setIsVoiceOpen(true)}
             isLoading={isLoading}

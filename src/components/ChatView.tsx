@@ -4,9 +4,6 @@ import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import { NewtonMascot } from './NewtonMascot';
 import { ChatMessage, ChatSession, CourseModuleId } from '../types';
-import { SphericalConductorSim } from './simulators/SphericalConductorSim';
-import { CoulombSim } from './simulators/CoulombSim';
-import { OhmSim } from './simulators/OhmSim';
 import { SpeechService } from '../utils/speech';
 import { 
   Send, 
@@ -22,10 +19,12 @@ import {
   Plus, 
   History, 
   MessageSquare,
+  Square,
   X
 } from 'lucide-react';
 
 const DIAGRAM_LOAD_TIMEOUT_MS = 60000;
+const DIAGRAMS_ENABLED = false;
 
 function withNewSeed(url: string): string {
   const seed = Math.floor(Math.random() * 1000000);
@@ -109,6 +108,7 @@ interface ChatViewProps {
   sessions?: ChatSession[];
   currentSessionId?: string;
   onSendMessage: (text: string, imageBase64?: string) => Promise<void>;
+  onStopGeneration?: () => void;
   onOpenScanner: () => void;
   onOpenVoice: () => void;
   isLoading: boolean;
@@ -127,6 +127,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
   sessions = [],
   currentSessionId = '',
   onSendMessage,
+  onStopGeneration,
   onOpenScanner,
   onOpenVoice,
   isLoading,
@@ -438,10 +439,10 @@ export const ChatView: React.FC<ChatViewProps> = ({
                   </span>
                   <div className="flex flex-col gap-1.5 text-left">
                     {[
-                      '¿Por qué el campo eléctrico dentro de un conductor es cero?',
+                      '¿Por qué el campo eléctrico dentro de un conductor en equilibrio es cero?',
+                      'Calcula la fuerza de Coulomb para q1 = 4 µC y q2 = -2 µC separadas r = 0.5 m.',
+                      'Resuelve un circuito con ley de Ohm para V = 12 V y R = 6 Ω, hallando corriente y potencia.',
                       'Calcula la constante tau en un circuito RC con R = 10 kΩ y C = 100 µF.',
-                      'Genera un diagrama esquemático de un circuito rectificador con diodo y filtro capacitivo.',
-                      'Explica la ley de Lenz con un diagrama de espira y líneas de campo inducido.',
                     ].map((q, idx) => (
                       <button
                         key={idx}
@@ -535,8 +536,8 @@ export const ChatView: React.FC<ChatViewProps> = ({
                       </div>
                     )}
 
-                    {/* Diagram Loading State (with Newton in thinking mood) */}
-                    {msg.diagramLoading && (
+                    {/* Diagram Loading State (hidden while diagram generator is temporarily disabled) */}
+                    {DIAGRAMS_ENABLED && msg.diagramLoading && (
                       <div className="mt-3.5 p-3.5 rounded-2xl bg-[#FFFBD9]/90 dark:bg-[#0F1A0F]/90 border border-[#ADCA88] dark:border-[#3C5A40] flex items-center gap-3 animate-in fade-in duration-300">
                         <NewtonMascot size={40} mood="thinking" animated />
                         <div className="flex-1 min-w-0">
@@ -575,7 +576,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                           <DiagramImage
                             url={msg.diagramUrl}
                             onRetry={
-                              msg.diagramPrompt && onRetryDiagram
+                              DIAGRAMS_ENABLED && msg.diagramPrompt && onRetryDiagram
                                 ? () => onRetryDiagram(msg.id, msg.diagramPrompt!)
                                 : undefined
                             }
@@ -584,8 +585,8 @@ export const ChatView: React.FC<ChatViewProps> = ({
                       </div>
                     )}
 
-                    {/* Diagram Offer: Newton propone un diagrama y el estudiante decide si lo genera */}
-                    {msg.diagramPrompt && !msg.diagramUrl && !msg.diagramLoading && !msg.diagramError && onRetryDiagram && (
+                    {/* Diagram Offer: hidden while /api/diagram is temporarily disabled (503) */}
+                    {DIAGRAMS_ENABLED && msg.diagramPrompt && !msg.diagramUrl && !msg.diagramLoading && !msg.diagramError && onRetryDiagram && (
                       <div className="mt-3 p-3 rounded-2xl bg-[#FFFBD9]/90 dark:bg-[#0F1A0F]/90 border border-[#ADCA88] dark:border-[#3C5A40] flex items-center justify-between gap-2.5 text-xs text-[#546C37] dark:text-[#CFE3A8] animate-in fade-in duration-200">
                         <span className="text-[11px] font-['Space_Grotesk']">
                           Newton puede dibujar un diagrama de este problema. ¿Quieres verlo?
@@ -601,7 +602,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                     )}
 
                     {/* Diagram Error Notification */}
-                    {msg.diagramError && (
+                    {DIAGRAMS_ENABLED && msg.diagramError && (
                       <div className="mt-3 p-3 rounded-2xl bg-[#FFF2EE] dark:bg-[#3A1820] border border-[#FA8989] dark:border-[#8A3A4A] flex items-start justify-between gap-2.5 text-xs text-[#941C2F] dark:text-[#FF9FAE] animate-in fade-in duration-200">
                         <div className="flex items-start gap-2">
                           <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-[#941C2F] dark:text-[#FF9FAE]" />
@@ -642,30 +643,6 @@ export const ChatView: React.FC<ChatViewProps> = ({
                       </div>
                     )}
 
-                    {/* Inline Simulator / Visual Component (matching ChatActivoMovil.png) */}
-                    {msg.simulationType === 'conductor_gauss' && (
-                      <div className="mt-3">
-                        <SphericalConductorSim compact />
-                      </div>
-                    )}
-                    {msg.simulationType === 'coulomb' && (
-                      <div className="mt-3">
-                        <CoulombSim
-                          compact
-                          initialParams={msg.simulationParams}
-                          adjusted={msg.simulationAdjusted}
-                        />
-                      </div>
-                    )}
-                    {msg.simulationType === 'ohm' && (
-                      <div className="mt-3">
-                        <OhmSim
-                          compact
-                          initialParams={msg.simulationParams}
-                          adjusted={msg.simulationAdjusted}
-                        />
-                      </div>
-                    )}
                   </div>
 
                   {/* Quick Chips suggestions below Newton's response (matching mockup) */}
@@ -760,14 +737,29 @@ export const ChatView: React.FC<ChatViewProps> = ({
                 className="flex-1 bg-transparent px-2 text-xs sm:text-sm text-[#546C37] dark:text-[#CFE3A8] placeholder-[#546C37]/50 dark:placeholder-[#CFE3A8]/50 focus:outline-none font-['Space_Grotesk']"
               />
 
-              <button
-                type="submit"
-                disabled={(!inputText.trim() && !attachedImage) || isLoading || loadingMessages}
-                className="w-9 h-9 rounded-full bg-[#546C37] dark:bg-[#6E8F47] hover:bg-[#546C37]/90 dark:hover:bg-[#6E8F47]/90 disabled:opacity-40 text-white flex items-center justify-center transition-transform active:scale-95 shrink-0 shadow-xs cursor-pointer"
-              >
-                <Send className="w-4 h-4 text-white" />
-              </button>
+              {isLoading && onStopGeneration ? (
+                <button
+                  type="button"
+                  onClick={onStopGeneration}
+                  title="Detener la respuesta de Newton"
+                  className="h-9 px-3 rounded-full bg-[#941C2F] dark:bg-[#C0334A] hover:bg-[#941C2F]/90 dark:hover:bg-[#C0334A]/90 text-white text-xs font-bold flex items-center justify-center gap-1.5 transition-all active:scale-95 shrink-0 shadow-xs cursor-pointer"
+                >
+                  <Square className="w-3.5 h-3.5 fill-current" />
+                  <span>Detener</span>
+                </button>
+              ) : (
+                <button
+                  type="submit"
+                  disabled={(!inputText.trim() && !attachedImage) || isLoading || loadingMessages}
+                  className="w-9 h-9 rounded-full bg-[#546C37] dark:bg-[#6E8F47] hover:bg-[#546C37]/90 dark:hover:bg-[#6E8F47]/90 disabled:opacity-40 text-white flex items-center justify-center transition-transform active:scale-95 shrink-0 shadow-xs cursor-pointer"
+                >
+                  <Send className="w-4 h-4 text-white" />
+                </button>
+              )}
             </form>
+            <p className="mt-1.5 mb-0.5 px-2 text-center text-[11px] leading-snug text-neutral-500 dark:text-neutral-400 font-['Space_Grotesk']">
+              Newton es una IA y puede cometer errores. Verifica los cálculos y resultados importantes.
+            </p>
           </div>
         </div>
 

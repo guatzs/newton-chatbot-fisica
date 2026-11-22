@@ -16,8 +16,10 @@ import {
   Sun,
   Moon,
   LogOut,
-  LogIn
+  LogIn,
+  ExternalLink
 } from 'lucide-react';
+import { SyllabusPdfModal } from './SyllabusPdfModal';
 
 interface SidebarProps {
   activeTab: 'home' | 'chat' | 'simulators' | 'formulas';
@@ -56,6 +58,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const [avatarError, setAvatarError] = useState<boolean>(false);
   const [sessionToDelete, setSessionToDelete] = useState<string | null>(null);
+  const [isSyllabusModalOpen, setIsSyllabusModalOpen] = useState<boolean>(false);
 
   useEffect(() => {
     setAvatarError(false);
@@ -292,12 +295,29 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </button>
           )}
 
-          <div className="p-2.5 bg-white/70 dark:bg-[#16241A]/70 rounded-2xl border border-[#ADCA88]/50 dark:border-[#3C5A40]/50 space-y-1.5 text-[11px] font-['Space_Grotesk']">
-            <div className="flex items-center text-[#546C37] dark:text-[#CFE3A8]">
-              <span className="flex items-center gap-1.5 font-medium">
-                <Cpu className="w-3.5 h-3.5 text-[#546C37] dark:text-[#CFE3A8]" />
-                Física Aplicada
+          <div
+            role="button"
+            tabIndex={0}
+            title="Abrir sílabo oficial"
+            aria-label="Abrir sílabo oficial de Física Aplicada"
+            onClick={() => setIsSyllabusModalOpen(true)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                setIsSyllabusModalOpen(true);
+              }
+            }}
+            className="group p-2.5 bg-white/70 dark:bg-[#16241A]/70 rounded-2xl border border-[#ADCA88]/50 dark:border-[#3C5A40]/50 hover:border-[#546C37]/75 dark:hover:border-[#8FB35E]/75 hover:bg-[#D6E3B1]/40 dark:hover:bg-[#1E3524]/90 hover:shadow-xs space-y-1.5 text-[11px] font-['Space_Grotesk'] cursor-pointer transition-all motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#546C37] dark:focus-visible:ring-[#6E8F47]"
+          >
+            <div className="flex items-center justify-between gap-2 text-[#546C37] dark:text-[#CFE3A8]">
+              <span className="flex items-center gap-1.5 font-medium min-w-0 truncate">
+                <Cpu className="w-3.5 h-3.5 text-[#546C37] dark:text-[#CFE3A8] shrink-0" />
+                <span className="truncate">Física Aplicada</span>
               </span>
+              <ExternalLink
+                className="w-3.5 h-3.5 text-[#546C37]/60 dark:text-[#CFE3A8]/60 group-hover:text-[#546C37] dark:group-hover:text-[#CFE3A8] group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all shrink-0"
+                aria-hidden="true"
+              />
             </div>
             <div className="flex items-center justify-between text-[#546C37]/80 dark:text-[#CFE3A8]/80 text-[10px]">
               <span className="flex items-center gap-1">
@@ -306,11 +326,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </span>
               <span>4 Módulos</span>
             </div>
-            <div className="flex items-center gap-1.5 pt-1 border-t border-[#ADCA88]/30 dark:border-[#3C5A40]/30 text-[10px] text-emerald-700 dark:text-emerald-400 font-semibold">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 dark:bg-emerald-400 animate-pulse"></span>
-              <span>Motor Físico Conectado</span>
+            <div className="flex items-center justify-between gap-1.5 pt-1 border-t border-[#ADCA88]/30 dark:border-[#3C5A40]/30 text-[10px] text-emerald-700 dark:text-emerald-400 font-semibold">
+              <span className="flex items-center gap-1.5 min-w-0">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 dark:bg-emerald-400 animate-pulse shrink-0"></span>
+                <span className="truncate">Motor Físico Conectado</span>
+              </span>
             </div>
+            <p className="text-[10px] font-medium text-[#546C37]/65 dark:text-[#CFE3A8]/65 group-hover:text-[#546C37] dark:group-hover:text-[#CFE3A8] transition-colors">
+              Abrir sílabo oficial
+            </p>
           </div>
+
+          <SyllabusPdfModal
+            isOpen={isSyllabusModalOpen}
+            onClose={() => setIsSyllabusModalOpen(false)}
+          />
         </div>
 
         {/* 5. SECCIÓN: PERFIL */}

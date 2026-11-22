@@ -17,6 +17,6 @@ export const SIM_SPECS: Record<ParameterizedSimulationId, ParamSpec[]> = {
   ],
   ohm: [
     { key: 'v', unit: 'V', min: 0, max: 12, step: 0.1, default: 6 },
-    { key: 'res', unit: 'Ω', min: 10, max: 500, step: 1, default: 50 },
+    { key: 'res', unit: 'Ω', min: 1, max: 1000, step: 1, default: 50 },
   ],
 };

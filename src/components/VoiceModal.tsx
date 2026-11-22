@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Mic, Send, Sparkles, RefreshCw, AlertCircle, Square, Loader2 } from 'lucide-react';
 import { NewtonMascot } from './NewtonMascot';
+import { getAuthApiHeaders } from '../utils/sessionClient';
 
 interface VoiceModalProps {
   isOpen: boolean;
@@ -300,10 +301,11 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({
         reader.readAsDataURL(blob);
       });
 
-      // Send to server Gemini transcription endpoint
+      // Send to server Gemini transcription endpoint with verified Firebase token
+      const headers = await getAuthApiHeaders();
       const response = await fetch('/api/transcribe', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           audioBase64: base64Audio,
           mimeType: cleanMimeType,
@@ -313,7 +315,15 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({
 
       if (!response.ok) {
         const errJson = await response.json().catch(() => ({}));
-        throw new Error(errJson.error || `Error ${response.status} en la transcripción`);
+        const fallbackMsg =
+          response.status === 401
+            ? 'Tu sesión no está autorizada o expiró. Recarga la página o vuelve a iniciar sesión.'
+            : response.status === 429
+              ? 'Has alcanzado el límite de solicitudes de audio por minuto. Espera unos segundos e inténtalo de nuevo.'
+              : `Error ${response.status} en la transcripción`;
+        const err = new Error(errJson.error || fallbackMsg);
+        (err as any).statusCode = response.status;
+        throw err;
       }
 
       const data = await response.json();
@@ -324,11 +334,15 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({
       }
     } catch (err: any) {
       console.error('Transcription error:', err);
-      const msg =
-        err?.name === 'TimeoutError'
-          ? 'La transcripción tardó demasiado. Intenta de nuevo o graba un audio más corto.'
-          : err?.message || 'revisa tu conexión e intenta de nuevo';
-      setErrorMessage(`Error al transcribir: ${msg}`);
+      if (err?.statusCode === 401 || err?.statusCode === 429 || err?.statusCode === 413) {
+        setErrorMessage(err.message);
+      } else {
+        const msg =
+          err?.name === 'TimeoutError'
+            ? 'La transcripción tardó demasiado. Intenta de nuevo o graba un audio más corto.'
+            : err?.message || 'revisa tu conexión e intenta de nuevo';
+        setErrorMessage(`Error al transcribir: ${msg}`);
+      }
     } finally {
       setIsTranscribing(false);
     }

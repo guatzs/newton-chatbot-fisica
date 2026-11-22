@@ -109,7 +109,7 @@ export const PHYSICAL_CONSTANTS = [
   {
     name: 'Constante de Coulomb',
     symbol: 'k',
-    value: '8.988 × 10⁹ N·m²/C²',
+    value: '9 × 10⁹ N·m²/C²',
     description: 'Equivalente a 1 / (4πε₀). Determina la magnitud de la fuerza electrostática.',
   },
   {

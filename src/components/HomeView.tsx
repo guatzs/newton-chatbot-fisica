@@ -215,7 +215,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
               </div>
 
               <div className="flex items-center justify-between pt-3 mt-2 border-t border-[#ADCA88]/20 dark:border-[#3C5A40]/20 text-xs font-semibold text-[#546C37] dark:text-[#CFE3A8]">
-                <span>{mod.exercisesCount} Prácticas guiadas</span>
+                <span>Tutoría y práctica guiada</span>
                 <span className="flex items-center gap-1 group-hover:translate-x-1 transition-transform text-[#941C2F] dark:text-[#FF9FAE]">
                   Consultar <ArrowRight className="w-3.5 h-3.5" />
                 </span>
@@ -258,17 +258,21 @@ export const HomeView: React.FC<HomeViewProps> = ({
         </div>
 
         <div
-          onClick={() => onStartChatWithPrompt('¿Cuáles son los ejercicios tipo examen más comunes de Física Aplicada?')}
+          onClick={() =>
+            onStartChatWithPrompt(
+              'Genera un simulacro dinámico con 3 ejercicios prácticos de Física Aplicada (Electrostática, Electrodinámica y Magnetismo o Electrónica) con datos numéricos concretos y pregúntame cuál quiero resolver primero paso a paso.'
+            )
+          }
           className="bg-white dark:bg-[#16241A] rounded-3xl p-4 border border-[#ADCA88]/40 dark:border-[#3C5A40]/40 hover:border-[#546C37] dark:hover:border-[#6E8F47] cursor-pointer shadow-xs hover:shadow-sm transition-all"
         >
           <div className="w-8 h-8 rounded-xl bg-[#FFFBD9] dark:bg-[#0F1A0F] border border-[#ADCA88] dark:border-[#3C5A40] text-[#546C37] dark:text-[#CFE3A8] flex items-center justify-center font-bold text-sm mb-2">
-            📝
+            🎯
           </div>
           <h4 className="font-bold text-sm text-[#546C37] dark:text-[#CFE3A8] font-['Pixelify_Sans']">
-            Banco de Exámenes
+            Simulacros y Ejercicios
           </h4>
           <p className="text-xs text-[#546C37]/70 dark:text-[#CFE3A8]/70 mt-0.5">
-            Evaluación Continua 1, Parcial, Continua 2 y Final de la UCSUR.
+            Generación dinámica de problemas paso a paso y prácticas personalizadas por módulo.
           </p>
         </div>
       </div>

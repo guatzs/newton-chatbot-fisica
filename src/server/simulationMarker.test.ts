@@ -111,13 +111,26 @@ describe('parseSimulacion', () => {
     assert.deepEqual(res.adjusted, []);
   });
 
-  it('P16: clamps negative voltage v=-1 and low resistance res=5 for ohm', () => {
-    const res = parseSimulacion('[SIMULACION]: ohm | v=-1 | res=5');
-    assert.equal(res.type, 'ohm');
-    assert.deepEqual(res.params, { v: 0, res: 10 });
-    assert.deepEqual(res.adjusted, [
+  it('P16: clamps negative voltage v=-1 and out-of-range resistance res=0.5 / res=1500 for ohm', () => {
+    const low = parseSimulacion('[SIMULACION]: ohm | v=-1 | res=0.5');
+    assert.equal(low.type, 'ohm');
+    assert.deepEqual(low.params, { v: 0, res: 1 });
+    assert.deepEqual(low.adjusted, [
       { key: 'v', requested: -1, applied: 0 },
-      { key: 'res', requested: 5, applied: 10 },
+      { key: 'res', requested: 0.5, applied: 1 },
     ]);
+
+    const high = parseSimulacion('[SIMULACION]: ohm | v=12 | res=1500');
+    assert.equal(high.type, 'ohm');
+    assert.deepEqual(high.params, { v: 12, res: 1000 });
+    assert.deepEqual(high.adjusted, [{ key: 'res', requested: 1500, applied: 1000 }]);
+  });
+
+  it('P17: accepts exact course resistances (1, 3, 4, 6, 12, 1000 Ω) without clamping', () => {
+    for (const r of [1, 3, 4, 6, 12, 1000]) {
+      const res = parseSimulacion(`[SIMULACION]: ohm | v=12 | res=${r}`);
+      assert.equal(res.params?.res, r);
+      assert.deepEqual(res.adjusted, []);
+    }
   });
 });

@@ -4,7 +4,6 @@ import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import { NewtonMascot } from './NewtonMascot';
 import { ChatMessage, ChatSession, CourseModuleId } from '../types';
-import { COURSE_MODULES } from '../data/syllabus';
 import { SphericalConductorSim } from './simulators/SphericalConductorSim';
 import { CoulombSim } from './simulators/CoulombSim';
 import { OhmSim } from './simulators/OhmSim';
@@ -46,7 +45,7 @@ function DiagramImage({ url, onRetry }: { url: string; onRetry?: () => void }) {
   }, [url]);
 
   const handleFail = useCallback(() => {
-    if (!autoRetried && url.includes('pollinations.ai')) {
+    if (!autoRetried && /^https?:\/\//i.test(url)) {
       setAutoRetried(true);
       setSrc(withNewSeed(url));
       setStatus('loading');
@@ -365,13 +364,15 @@ export const ChatView: React.FC<ChatViewProps> = ({
       {/* Top Session Sub-Header Card (matching ChatActivoMovil.png & DesktopIDE.png) */}
       <div className="bg-[#FFFBD9]/95 dark:bg-[#0F1A0F]/95 backdrop-blur-md rounded-2xl p-3 border border-[#ADCA88]/50 dark:border-[#3C5A40]/50 shadow-xs flex items-center justify-between gap-3 mb-3 shrink-0">
         <div className="flex items-center gap-2.5 min-w-0">
-          <NewtonMascot size={36} mood="happy" />
+          <div className="hidden md:block shrink-0">
+            <NewtonMascot size={36} mood="happy" />
+          </div>
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <h2 className="font-bold text-sm sm:text-base text-[#546C37] dark:text-[#CFE3A8] truncate font-['Space_Grotesk']">
                 {activeTopic}
               </h2>
-              <span className="bg-[#D6E3B1] dark:bg-[#24402B] text-[#546C37] dark:text-[#CFE3A8] text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 shrink-0">
+              <span className="bg-[#D6E3B1] dark:bg-[#24402B] text-[#546C37] dark:text-[#CFE3A8] text-[10px] font-bold px-2 py-0.5 rounded-full hidden md:flex items-center gap-1 shrink-0">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse"></span>
                 En línea
               </span>
@@ -403,7 +404,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
             <span className="hidden sm:inline">Nueva Consulta</span>
           </button>
 
-          <div className="w-8 h-8 rounded-full bg-[#D6E3B1] dark:bg-[#24402B] flex items-center justify-center text-[#546C37] dark:text-[#CFE3A8]">
+          <div className="w-8 h-8 rounded-full bg-[#D6E3B1] dark:bg-[#24402B] hidden md:flex items-center justify-center text-[#546C37] dark:text-[#CFE3A8]">
             <BookOpen className="w-4 h-4" />
           </div>
         </div>
@@ -522,12 +523,12 @@ export const ChatView: React.FC<ChatViewProps> = ({
                     ) : null}
 
                     {/* Message Body Text */}
-                    {isUser || msg.isError ? (
+                    {msg.isError ? (
                       <div className="text-xs sm:text-sm font-['Space_Grotesk'] leading-relaxed whitespace-pre-wrap">
                         {msg.text}
                       </div>
                     ) : (
-                      <div className="text-xs sm:text-sm font-['Space_Grotesk'] leading-relaxed newton-markdown">
+                      <div className={`text-xs sm:text-sm font-['Space_Grotesk'] leading-relaxed newton-markdown ${isUser ? 'newton-markdown-user' : ''}`}>
                         <ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]}>
                           {msg.text}
                         </ReactMarkdown>
@@ -767,64 +768,6 @@ export const ChatView: React.FC<ChatViewProps> = ({
                 <Send className="w-4 h-4 text-white" />
               </button>
             </form>
-          </div>
-        </div>
-
-        {/* Right Desktop Info Panel: 4 Módulos Reales del Sílabo */}
-        <div className="hidden lg:flex flex-col w-80 space-y-3 shrink-0 overflow-y-auto pr-1">
-          <div className="bg-[#FFFBD9] dark:bg-[#0F1A0F] rounded-3xl p-4 border border-[#ADCA88]/60 dark:border-[#3C5A40]/60 shadow-xs space-y-3">
-            <div className="flex items-center justify-between border-b border-[#ADCA88]/40 dark:border-[#3C5A40]/40 pb-2">
-              <div className="flex items-center gap-1.5 text-xs font-bold text-[#546C37] dark:text-[#CFE3A8] font-mono uppercase">
-                <BookOpen className="w-4 h-4 text-[#941C2F] dark:text-[#FF9FAE]" />
-                <span>Sílabo de Física Aplicada</span>
-              </div>
-              <span className="text-[10px] font-mono bg-[#D6E3B1] dark:bg-[#24402B] text-[#546C37] dark:text-[#CFE3A8] px-2 py-0.5 rounded-full font-bold">
-                4 Módulos
-              </span>
-            </div>
-
-            <p className="text-[11px] text-[#546C37]/80 dark:text-[#CFE3A8]/80 leading-relaxed font-['Space_Grotesk']">
-              Temario oficial de la asignatura. Pulsa para formular preguntas a Newton sobre cualquier módulo:
-            </p>
-
-            <div className="space-y-2.5">
-              {COURSE_MODULES.map((mod) => (
-                <div
-                  key={mod.id}
-                  className="p-3 rounded-2xl bg-white/95 dark:bg-[#16241A]/95 border border-[#ADCA88]/50 dark:border-[#3C5A40]/50 hover:border-[#546C37] dark:hover:border-[#6E8F47] transition-all shadow-2xs space-y-2 group"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-[#D6E3B1] dark:bg-[#24402B] text-[#546C37] dark:text-[#CFE3A8]">
-                      {mod.badge}
-                    </span>
-                    <span className="text-[10px] font-mono text-[#546C37]/70 dark:text-[#CFE3A8]/70">
-                      {mod.weeks}
-                    </span>
-                  </div>
-
-                  <div>
-                    <h4 className="text-xs font-bold text-[#546C37] dark:text-[#CFE3A8] font-['Space_Grotesk'] group-hover:text-[#941C2F] dark:group-hover:text-[#FF9FAE] transition-colors">
-                      {mod.title}
-                    </h4>
-                    <p className="text-[10px] text-[#546C37]/70 dark:text-[#CFE3A8]/70 line-clamp-2 mt-0.5 font-['Space_Grotesk']">
-                      {mod.subtitle}
-                    </p>
-                  </div>
-
-                  <button
-                    onClick={() =>
-                      handleSendChip(
-                        `Hola Newton, tengo una consulta sobre el ${mod.badge} (${mod.title}): ¿puedes explicarme los conceptos teóricos clave y resolver un problema representativo paso a paso?`
-                      )
-                    }
-                    className="w-full py-1.5 px-2.5 rounded-xl bg-[#D6E3B1]/80 dark:bg-[#24402B]/80 hover:bg-[#D6E3B1] dark:hover:bg-[#24402B] text-[#546C37] dark:text-[#CFE3A8] text-[11px] font-bold flex items-center justify-center gap-1.5 transition-colors border border-[#ADCA88]/50 dark:border-[#3C5A40]/50 active:scale-98 cursor-pointer"
-                  >
-                    <MessageSquare className="w-3 h-3 text-[#941C2F] dark:text-[#FF9FAE]" />
-                    <span>Preguntar sobre {mod.title}</span>
-                  </button>
-                </div>
-              ))}
-            </div>
           </div>
         </div>
 

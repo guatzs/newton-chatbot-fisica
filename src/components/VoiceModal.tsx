@@ -87,6 +87,7 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({
   const audioStreamRef = useRef<MediaStream | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const autoStopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastAudioRef = useRef<{ blob: Blob; mimeType: string } | null>(null);
   const abortOnCloseRef = useRef<boolean>(false);
 
@@ -118,39 +119,47 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({
     };
   }, [isOpen]);
 
-  // Timer effect for recording duration with 60s automatic cutoff
+  // Timer effect for recording duration and 60s automatic cutoff
   useEffect(() => {
     if (isRecording) {
       timerRef.current = setInterval(() => {
-        setRecordingSeconds((prev) => {
-          const next = prev + 1;
-          if (next >= MAX_RECORDING_SECONDS) {
-            setAutoStopNotice(
-              'Se alcanzó el límite máximo de 60 segundos. La grabación se detuvo automáticamente.'
-            );
-            if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-              try {
-                mediaRecorderRef.current.stop();
-              } catch {
-                stopAudioTracks();
-              }
-            }
-            setIsRecording(false);
-            return MAX_RECORDING_SECONDS;
-          }
-          return next;
-        });
+        setRecordingSeconds((prev) => Math.min(prev + 1, MAX_RECORDING_SECONDS));
       }, 1000);
+
+      autoStopTimerRef.current = setTimeout(() => {
+        setAutoStopNotice(
+          'Se alcanzó el límite máximo de 60 segundos. La grabación se detuvo automáticamente.'
+        );
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+          try {
+            mediaRecorderRef.current.stop();
+          } catch {
+            stopAudioTracks();
+          }
+        } else {
+          stopAudioTracks();
+        }
+        setIsRecording(false);
+      }, MAX_RECORDING_SECONDS * 1000);
     } else {
       if (timerRef.current) {
         clearInterval(timerRef.current);
         timerRef.current = null;
+      }
+      if (autoStopTimerRef.current) {
+        clearTimeout(autoStopTimerRef.current);
+        autoStopTimerRef.current = null;
       }
       setRecordingSeconds(0);
     }
     return () => {
       if (timerRef.current) {
         clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+      if (autoStopTimerRef.current) {
+        clearTimeout(autoStopTimerRef.current);
+        autoStopTimerRef.current = null;
       }
     };
   }, [isRecording]);

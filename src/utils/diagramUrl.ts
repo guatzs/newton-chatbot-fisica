@@ -7,13 +7,6 @@ export function looksSpanishPrompt(prompt: string): boolean {
   );
 }
 
-export function buildPollinationsImageUrl(englishPrompt: string, seed?: number): string {
-  const cleaned = englishPrompt.trim().replace(/\s+/g, ' ');
-  const encodedPrompt = encodeURIComponent(cleaned);
-  const seedParam = typeof seed === 'number' ? `&seed=${seed}` : '';
-  return `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=1024&nologo=true${seedParam}`;
-}
-
 /**
  * Devuelve true solo si el mensaje del estudiante pide explícitamente un dibujo, diagrama o imagen.
  * Se usa para no generar diagramas que el estudiante no pidió.

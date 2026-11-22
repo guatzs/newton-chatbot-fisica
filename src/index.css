@@ -48,6 +48,14 @@
   line-height: 1.6;
 }
 
+.newton-markdown p:first-child {
+  margin-top: 0;
+}
+
+.newton-markdown p:last-child {
+  margin-bottom: 0;
+}
+
 .newton-markdown h1,
 .newton-markdown h2,
 .newton-markdown h3,
@@ -81,6 +89,10 @@
 .newton-markdown strong {
   font-weight: 700;
   color: #3D121A;
+}
+
+.newton-markdown-user strong {
+  color: inherit;
 }
 
 .newton-markdown code {

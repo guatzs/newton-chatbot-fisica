@@ -68,7 +68,7 @@ export const Header: React.FC<HeaderProps> = ({
 
   return (
     <header className="sticky top-0 z-20 bg-[#FFFBD9]/90 dark:bg-[#0F1A0F]/90 backdrop-blur-md border-b border-[#ADCA88]/40 dark:border-[#3C5A40]/40 px-3 sm:px-6 py-2.5 transition-colors duration-200">
-      <div className="max-w-7xl mx-auto flex items-center justify-between">
+      <div className="max-w-7xl mx-auto flex items-center justify-between min-w-0 gap-2">
         {/* Mobile Left: Mascot & Brand (visible only on mobile md:hidden) */}
         <div 
           onClick={() => onSelectTab('home')}
@@ -79,7 +79,7 @@ export const Header: React.FC<HeaderProps> = ({
             alt="Newton AI"
             className="w-9 h-9 object-contain drop-shadow-sm transition-transform duration-300 group-hover:scale-105 shrink-0"
           />
-          <div>
+          <div className="hidden">
             <div className="flex items-center gap-1.5">
               <span className="font-['Pixelify_Sans'] text-lg font-bold text-[#546C37] dark:text-[#CFE3A8] tracking-tight group-hover:text-[#941C2F] dark:group-hover:text-[#FF9FAE] transition-colors">
                 Newton AI
@@ -113,7 +113,7 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
 
         {/* Right block: Escanear, Voz, Theme toggle & Auth Profile Controls */}
-        <div className="flex items-center gap-1.5 sm:gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           {/* Scanner action shortcut */}
           <button
             type="button"

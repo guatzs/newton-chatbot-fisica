@@ -1,7 +1,7 @@
 import { GoogleGenAI, ThinkingLevel } from '@google/genai';
 import { SimulationAdjustment, SimulationParams, SimulationType } from '../types';
 import { parseSimulacion } from './simulationMarker';
-import { buildPollinationsImageUrl, looksSpanishPrompt } from '../utils/diagramUrl';
+import { looksSpanishPrompt } from '../utils/diagramUrl';
 import { formatCourseMaterialPromptSection } from './courseMaterial';
 
 export const NEWTON_SYSTEM_INSTRUCTION = `
@@ -56,13 +56,21 @@ REGLAS DE RIGOR Y FORMATO DE RESPUESTA:
    - 5. Concluye con el resultado final destacado con sus unidades del SI correspondientes.
 3. Formato estructurado y fórmulas matemáticas en LaTeX:
    - Redacta tus explicaciones usando Markdown estructurado (títulos con ##, listas y énfasis en negrita).
-   - Escribe SIEMPRE las expresiones y fórmulas en notación LaTeX estándar:
-     * Usa delimitadores simples $...$ para matemáticas en línea (ejemplos: $E = 0$, $\tau = RC$, $V_\\gamma \\approx 0.7\\text{ V}$, $q_1, q_2$).
-     * Usa delimitadores dobles $$...$$ en líneas separadas para ecuaciones destacadas, leyes fundamentales, fórmulas principales y resultados finales (ejemplo:
-       $$\\oint \\vec{E} \\cdot d\\vec{A} = \\frac{Q_{enc}}{\\varepsilon_0}$$
-       $$q(t) = C\\mathcal{E}(1 - e^{-t/RC})$$
-       $$I_D = I_s \\left(e^{\\frac{V_D}{\\eta V_T}} - 1\\right)$$
+   - Escribe SIEMPRE las expresiones y fórmulas cumpliendo estas Reglas de Formato Matemático (LaTeX):
+     * Usa siempre subíndices explícitos con guion bajo ($q_1$, $q_2$, $V_{ef}$, $X_L$), nunca escribas variables seguidas sin separación ($q1q2$).
+     * Separa productos de variables o constantes con multiplicación explícita (\\cdot) o espacio fino (\\,), por ejemplo: $F = k \\cdot \\dfrac{|q_1 \\cdot q_2|}{r^2}$.
+     * Usa delimitadores simples $...$ únicamente para matemáticas simples en línea que NO contengan fracciones ni raíces (ejemplos: $E = 0$, $\\tau = R \\cdot C$, $V_\\gamma \\approx 0.7\\text{ V}$, $q_1, q_2$).
+     * Envuelve todas las ecuaciones principales en bloques independientes ($$ ... $$) con una línea en blanco antes y después, nunca en línea ($ ... $) si contienen fracciones o raíces.
+     * Usa siempre \\dfrac en lugar de \\frac para que numeradores y denominadores mantengan un tamaño legible y no se compriman (ejemplos:
+
+       $$\\oint \\vec{E} \\cdot d\\vec{A} = \\dfrac{Q_{enc}}{\\varepsilon_0}$$
+
+       $$q(t) = C \\cdot \\mathcal{E} \\cdot \\left(1 - e^{-\\dfrac{t}{R \\cdot C}}\\right)$$
+
+       $$I_D = I_s \\cdot \\left(e^{\\dfrac{V_D}{\\eta \\cdot V_T}} - 1\\right)$$
+
      )
+   - Cuando el usuario solicite resolver un ejercicio sobre una fórmula, redacta el enunciado del problema con datos numéricos concretos y presenta todas las ecuaciones del desarrollo paso a paso envueltas en bloques $$ ... $$ limpios, evitando entornos \\begin{aligned} innecesarios.
    - Si la consulta involucra la ley de Gauss en un conductor, la ley de Coulomb entre dos cargas o la ley de Ohm en un circuito, menciona que pueden visualizarlo con el simulador interactivo de Newton.
 4. Diagramas e ilustraciones (uso controlado):
    - PRINCIPIO: Responde primero y principalmente con texto, directo a lo que el estudiante preguntó. El diagrama es un apoyo, nunca el centro de la respuesta.
@@ -130,7 +138,7 @@ Cuando recibas una imagen (circuito, diagrama, gráfico, pizarra o apunte manusc
 
 3. ## 📐 Resolución y Modelado Paso a Paso
    - Enuncia la ley física del sílabo de Física Aplicada correspondiente (Kirchhoff, Ohm, Gauss, Biot-Savart, etc.).
-   - Escribe las fórmulas siempre en notación LaTeX ($...$ para fórmulas en línea y $$...$$ para ecuaciones destacadas en bloque).
+   - Escribe las fórmulas siempre en notación LaTeX cumpliendo las reglas: subíndices explícitos con guion bajo ($q_1$, $X_L$), productos separados con \\cdot o \\,, \\dfrac en lugar de \\frac, $...$ solo para expresiones simples sin fracciones ni raíces, y bloques $$ ... $$ con una línea en blanco antes y después para toda ecuación principal o con fracciones/raíces.
    - Realiza la sustitución numérica detallada y verifica las unidades SI.
    - Concluye con la solución final destacada.
 `;
@@ -276,10 +284,10 @@ export async function streamNewtonAI(params: {
   console.time('[Newton AI Stream] Total Execution');
   const ai = getAI();
 
-  // Model configurations: primary (15s timeout) and fallback (20s timeout)
+  // Model configurations: primary (gemini-4-hydrogen, 30s TTFT timeout) and fallback (gemini-3.1-flash-lite, 25s)
   const modelConfigs = [
-    { model: 'gemini-3.8-flash', timeoutMs: 15000, waitBeforeRetryMs: 500 },
-    { model: 'gemini-3.1-flash-lite', timeoutMs: 20000, waitBeforeRetryMs: 1000 },
+    { model: 'gemini-4-hydrogen', timeoutMs: 30000, thinkingLevel: ThinkingLevel.LOW },
+    { model: 'gemini-3.1-flash-lite', timeoutMs: 25000, thinkingLevel: ThinkingLevel.LOW },
   ];
 
   let contents: any[] = [];
@@ -305,7 +313,7 @@ export async function streamNewtonAI(params: {
   let lastError: any = null;
 
   for (let i = 0; i < modelConfigs.length; i++) {
-    const { model, timeoutMs, waitBeforeRetryMs } = modelConfigs[i];
+    const { model, timeoutMs, thinkingLevel } = modelConfigs[i];
     if (params.abortSignal?.aborted) {
       throw new Error('Petición cancelada por el cliente.');
     }
@@ -314,27 +322,19 @@ export async function streamNewtonAI(params: {
     console.time(modelTimer);
 
     try {
-      // Setup timeout promise
-      let timeoutId: NodeJS.Timeout | null = null;
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        timeoutId = setTimeout(() => {
-          const tErr = new Error(`Timeout de ${timeoutMs}ms excedido en modelo ${model}`);
-          tErr.name = 'TimeoutError';
-          reject(tErr);
-        }, timeoutMs);
-      });
-
-      // Call generateContentStream
-      const streamPromise = ai.models.generateContentStream({
-        model,
-        contents,
-        config: {
-          systemInstruction: getNewtonSystemInstruction(),
-        },
-      });
-
-      const responseStream = await Promise.race([streamPromise, timeoutPromise]);
-      if (timeoutId) clearTimeout(timeoutId);
+      const responseStream = await withTimeout(
+        ai.models.generateContentStream({
+          model,
+          contents,
+          config: {
+            systemInstruction: getNewtonSystemInstruction(),
+            thinkingConfig: { thinkingLevel },
+            abortSignal: params.abortSignal,
+          },
+        }),
+        timeoutMs,
+        model
+      );
 
       // Iterate through chunks
       for await (const chunk of responseStream) {
@@ -380,8 +380,6 @@ export async function streamNewtonAI(params: {
       );
 
       if (!hasEmittedChunk && isRetryable && i < modelConfigs.length - 1) {
-        console.info(`[Newton AI Stream] Waiting ${waitBeforeRetryMs}ms before failing over to next model...`);
-        await new Promise((r) => setTimeout(r, waitBeforeRetryMs));
         continue;
       }
 
@@ -480,7 +478,7 @@ export async function askNewtonVision(params: {
 }): Promise<StreamResult> {
   console.time('[Newton Vision] Total Execution');
   const ai = getAI();
-  const modelsToTry = ['gemini-3.8-flash', 'gemini-3.1-flash-lite'];
+  const modelsToTry = ['gemini-4-hydrogen', 'gemini-3.1-flash-lite'];
 
   const cleanBase64 = params.imageBase64.replace(/^data:[^;]+;base64,/, '');
   const mimeType = params.imageMimeType || 'image/jpeg';
@@ -686,14 +684,14 @@ export class DiagramApiError extends Error {
   }
 }
 
-async function translateDiagramPromptToEnglish(prompt: string): Promise<string> {
+export async function translateDiagramPromptToEnglish(prompt: string): Promise<string> {
   const trimmed = prompt.trim();
   if (!looksSpanishPrompt(trimmed)) {
     return trimmed;
   }
 
   const ai = getAI();
-  const modelsToTry = ['gemini-3.8-flash', 'gemini-3.1-flash-lite'];
+  const modelsToTry = ['gemini-4-hydrogen', 'gemini-3.1-flash-lite'];
   for (const model of modelsToTry) {
     try {
       const response = await ai.models.generateContent({
@@ -719,10 +717,13 @@ async function translateDiagramPromptToEnglish(prompt: string): Promise<string> 
 export async function generateNewtonDiagram(params: {
   prompt: string;
 }): Promise<{ imageUrl: string }> {
-  console.time('[Newton Diagram] Pollinations URL Generation');
+  // TODO: integrar generador de imágenes (Nano Banana).
   const cleanPrompt = params.prompt.trim();
-  const englishPrompt = await translateDiagramPromptToEnglish(cleanPrompt);
-  const imageUrl = buildPollinationsImageUrl(englishPrompt, Math.floor(Math.random() * 1000000));
-  console.timeEnd('[Newton Diagram] Pollinations URL Generation');
-  return { imageUrl };
+  if (!cleanPrompt) {
+    throw new DiagramApiError('Se requiere una descripción para generar el diagrama.', 400);
+  }
+  throw new DiagramApiError(
+    'La generación de diagramas está temporalmente desactivada mientras se configura el nuevo generador de imágenes.',
+    503
+  );
 }

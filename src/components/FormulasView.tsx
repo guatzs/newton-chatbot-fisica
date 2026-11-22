@@ -7,7 +7,7 @@ import { CourseModuleId } from '../types';
 import { Search, Copy, Check, Sparkles } from 'lucide-react';
 
 interface FormulasViewProps {
-  onAskAboutFormula: (formulaName: string, latex: string) => void;
+  onAskAboutFormula: (formulaName: string, latex: string, moduleId?: CourseModuleId) => void;
 }
 
 export const FormulasView: React.FC<FormulasViewProps> = ({ onAskAboutFormula }) => {
@@ -119,9 +119,9 @@ export const FormulasView: React.FC<FormulasViewProps> = ({ onAskAboutFormula })
               </p>
 
               {/* Equation Box with KaTeX rendering */}
-              <div className="my-2 text-center text-[#546C37] dark:text-[#CFE3A8]">
+              <div className="my-2 text-center text-[#546C37] dark:text-[#CFE3A8] overflow-x-auto py-1">
                 <ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]}>
-                  {`$$${f.latex}$$`}
+                  {`\n\n$$\n${f.latex}\n$$\n\n`}
                 </ReactMarkdown>
               </div>
 
@@ -140,7 +140,7 @@ export const FormulasView: React.FC<FormulasViewProps> = ({ onAskAboutFormula })
             </div>
 
             <button
-              onClick={() => onAskAboutFormula(f.name, f.latex)}
+              onClick={() => onAskAboutFormula(f.name, f.latex, f.moduleId)}
               className="mt-4 w-full py-2 bg-[#D6E3B1] dark:bg-[#24402B] hover:bg-[#ADCA88] dark:hover:bg-[#3C5A40] text-[#546C37] dark:text-[#CFE3A8] rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
             >
               <Sparkles className="w-3.5 h-3.5 text-[#941C2F] dark:text-[#FF9FAE]" />

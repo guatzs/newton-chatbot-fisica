@@ -68,10 +68,10 @@ export const HomeView: React.FC<HomeViewProps> = ({
   };
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-6 space-y-6 animate-in fade-in duration-300">
+    <div className="max-w-4xl w-full min-w-0 mx-auto px-4 py-6 space-y-6 animate-in fade-in duration-300">
       {/* 1. Student Greeting & Mascot Hero Banner (matching MovilHome.png & DesktopInicio.png) */}
       <div className="bg-[#FFFBD9] dark:bg-[#0F1A0F] rounded-3xl p-5 sm:p-6 border-2 border-[#ADCA88]/50 dark:border-[#3C5A40]/50 shadow-sm relative overflow-hidden flex flex-col sm:flex-row items-center justify-between gap-5 transition-colors duration-200">
-        <div className="space-y-2 z-10 text-center sm:text-left">
+        <div className="space-y-2 z-10 text-center sm:text-left min-w-0">
           <div className="inline-flex items-center gap-1.5 bg-[#D6E3B1] dark:bg-[#24402B] text-[#546C37] dark:text-[#CFE3A8] px-3 py-1 rounded-full text-xs font-bold tracking-wider uppercase font-mono">
             FÍSICA UNIVERSITARIA • UCSUR
           </div>
@@ -94,13 +94,13 @@ export const HomeView: React.FC<HomeViewProps> = ({
       {/* 2. Instant Input Bar with Camera & Mic Buttons (matching DesktopInicio.png) */}
       <form
         onSubmit={handleQuickSubmit}
-        className="bg-white dark:bg-[#16241A] rounded-3xl p-2 sm:p-2.5 border-2 border-[#ADCA88] dark:border-[#3C5A40] shadow-md flex items-center gap-2 transition-all focus-within:ring-2 focus-within:ring-[#546C37] dark:focus-within:ring-[#6E8F47]"
+        className="min-w-0 w-full bg-white dark:bg-[#16241A] rounded-3xl p-2 sm:p-2.5 border-2 border-[#ADCA88] dark:border-[#3C5A40] shadow-md flex items-center gap-2 transition-all focus-within:ring-2 focus-within:ring-[#546C37] dark:focus-within:ring-[#6E8F47]"
       >
         <button
           type="button"
           onClick={onOpenScanner}
           title="Adjuntar o escanear ejercicio"
-          className="p-2 sm:p-2.5 rounded-2xl bg-[#D6E3B1]/60 dark:bg-[#24402B]/60 hover:bg-[#D6E3B1] dark:hover:bg-[#2F5237] text-[#546C37] dark:text-[#CFE3A8] transition-all cursor-pointer"
+          className="p-2 sm:p-2.5 rounded-2xl bg-[#D6E3B1]/60 dark:bg-[#24402B]/60 hover:bg-[#D6E3B1] dark:hover:bg-[#2F5237] text-[#546C37] dark:text-[#CFE3A8] transition-all shrink-0 cursor-pointer"
         >
           <Camera className="w-5 h-5 text-[#546C37] dark:text-[#CFE3A8]" />
         </button>
@@ -108,7 +108,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
           type="button"
           onClick={onOpenVoice}
           title="Dictar duda por voz"
-          className="p-2 sm:p-2.5 rounded-2xl bg-[#FDC2B1]/50 dark:bg-[#4A2530]/50 hover:bg-[#FDC2B1] dark:hover:bg-[#4A2530] text-[#941C2F] dark:text-[#FF9FAE] transition-all cursor-pointer"
+          className="p-2 sm:p-2.5 rounded-2xl bg-[#FDC2B1]/50 dark:bg-[#4A2530]/50 hover:bg-[#FDC2B1] dark:hover:bg-[#4A2530] text-[#941C2F] dark:text-[#FF9FAE] transition-all shrink-0 cursor-pointer"
         >
           <Mic className="w-5 h-5 text-[#941C2F] dark:text-[#FF9FAE]" />
         </button>
@@ -117,13 +117,13 @@ export const HomeView: React.FC<HomeViewProps> = ({
           type="text"
           value={quickInput}
           onChange={(e) => setQuickInput(e.target.value)}
-          placeholder="Pregúntale a Newton sobre electrostática, circuitos o magnetismo..."
-          className="flex-1 bg-transparent px-2 text-xs sm:text-sm text-[#546C37] dark:text-[#CFE3A8] placeholder-[#546C37]/50 dark:placeholder-[#CFE3A8]/50 focus:outline-none font-['Space_Grotesk']"
+          placeholder="Pregúntale a Newton..."
+          className="flex-1 min-w-0 w-full bg-transparent px-2 text-xs sm:text-sm text-[#546C37] dark:text-[#CFE3A8] placeholder-[#546C37]/50 dark:placeholder-[#CFE3A8]/50 focus:outline-none font-['Space_Grotesk']"
         />
 
         <button
           type="submit"
-          className="py-2.5 px-4 bg-[#FA8989] hover:bg-[#FA8989]/90 text-white rounded-2xl text-xs sm:text-sm font-bold flex items-center gap-1.5 transition-all shadow-sm active:scale-95 cursor-pointer"
+          className="py-2.5 px-4 bg-[#FA8989] hover:bg-[#FA8989]/90 text-white rounded-2xl text-xs sm:text-sm font-bold flex items-center gap-1.5 transition-all shadow-sm active:scale-95 shrink-0 cursor-pointer"
         >
           <Sparkles className="w-4 h-4" />
           <span className="hidden sm:inline">Consultar</span>
@@ -131,7 +131,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
       </form>
 
       {/* Suggested Quick Prompt Chips (matching mockup) */}
-      <div className="flex flex-wrap gap-2 text-xs">
+      <div className="flex flex-wrap gap-2 text-xs min-w-0">
         {[
           '# ¿Cómo funciona la Ley de Gauss?',
           '# Calcula la fuerza entre dos cargas',
@@ -141,7 +141,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
           <button
             key={idx}
             onClick={() => onStartChatWithPrompt(chip.replace('# ', ''))}
-            className="bg-[#D6E3B1]/70 dark:bg-[#24402B]/70 hover:bg-[#D6E3B1] dark:hover:bg-[#2F5237] text-[#546C37] dark:text-[#CFE3A8] font-medium px-3 py-1.5 rounded-full transition-all border border-[#ADCA88]/50 dark:border-[#3C5A40]/50 text-[11px] sm:text-xs cursor-pointer"
+            className="max-w-full text-left whitespace-normal bg-[#D6E3B1]/70 dark:bg-[#24402B]/70 hover:bg-[#D6E3B1] dark:hover:bg-[#2F5237] text-[#546C37] dark:text-[#CFE3A8] font-medium px-3 py-1.5 rounded-full transition-all border border-[#ADCA88]/50 dark:border-[#3C5A40]/50 text-[11px] sm:text-xs cursor-pointer"
           >
             {chip}
           </button>
@@ -195,21 +195,21 @@ export const HomeView: React.FC<HomeViewProps> = ({
             <div
               key={mod.id}
               onClick={() => onStartChatWithPrompt(`Hola Newton, quiero practicar el tema de ${mod.title}. ¿Cuáles son los conceptos clave y problemas típicos del sílabo?`, mod.id)}
-              className="bg-white dark:bg-[#16241A] rounded-3xl p-4 sm:p-5 border-2 border-[#ADCA88]/40 dark:border-[#3C5A40]/40 hover:border-[#546C37] dark:hover:border-[#6E8F47] transition-all cursor-pointer shadow-xs hover:shadow-md flex flex-col justify-between group"
+              className="min-w-0 bg-white dark:bg-[#16241A] rounded-3xl p-4 sm:p-5 border-2 border-[#ADCA88]/40 dark:border-[#3C5A40]/40 hover:border-[#546C37] dark:hover:border-[#6E8F47] transition-all cursor-pointer shadow-xs hover:shadow-md flex flex-col justify-between group"
             >
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-mono font-bold px-2 py-0.5 rounded-full bg-[#D6E3B1] dark:bg-[#24402B] text-[#546C37] dark:text-[#CFE3A8]">
+              <div className="min-w-0">
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <span className="text-xs font-mono font-bold px-2 py-0.5 rounded-full bg-[#D6E3B1] dark:bg-[#24402B] text-[#546C37] dark:text-[#CFE3A8] shrink-0">
                     {mod.badge}
                   </span>
-                  <span className="text-[11px] text-[#546C37]/70 dark:text-[#CFE3A8]/70 font-mono">
+                  <span className="text-[11px] text-[#546C37]/70 dark:text-[#CFE3A8]/70 font-mono truncate">
                     {mod.weeks}
                   </span>
                 </div>
-                <h3 className="font-bold text-base sm:text-lg text-[#546C37] dark:text-[#CFE3A8] group-hover:text-[#941C2F] dark:group-hover:text-[#FF9FAE] transition-colors font-['Pixelify_Sans']">
+                <h3 className="font-bold text-base sm:text-lg text-[#546C37] dark:text-[#CFE3A8] group-hover:text-[#941C2F] dark:group-hover:text-[#FF9FAE] transition-colors font-['Pixelify_Sans'] break-words">
                   {mod.title}
                 </h3>
-                <p className="text-xs text-[#546C37]/80 dark:text-[#CFE3A8]/80 mt-1 line-clamp-2 font-['Space_Grotesk']">
+                <p className="text-xs text-[#546C37]/80 dark:text-[#CFE3A8]/80 mt-1 line-clamp-2 font-['Space_Grotesk'] break-words">
                   {mod.subtitle}
                 </p>
               </div>
@@ -319,13 +319,13 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
       {/* 8. Dato del Día / Constante del día (matching MovilHome.png & DesktopInicio.png) */}
       <div className="bg-[#D6E3B1]/60 dark:bg-[#24402B]/60 rounded-3xl p-4 border border-[#ADCA88] dark:border-[#3C5A40] flex items-center justify-between gap-3 transition-colors duration-200">
-        <div className="flex items-start gap-2.5">
-          <span className="text-xl">💡</span>
-          <div>
+        <div className="flex items-start gap-2.5 min-w-0">
+          <span className="text-xl shrink-0">💡</span>
+          <div className="min-w-0">
             <div className="text-[10px] font-bold text-[#941C2F] dark:text-[#FF9FAE] uppercase tracking-wider font-mono">
               ¿DATO CURIOSO / CONSTANTE FÍSICA?
             </div>
-            <p className="text-xs text-[#546C37] dark:text-[#CFE3A8] font-medium mt-0.5">
+            <p className="text-xs text-[#546C37] dark:text-[#CFE3A8] font-medium mt-0.5 break-words">
               {curiousFacts[curiousFactIndex]}
             </p>
           </div>

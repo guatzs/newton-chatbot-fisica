@@ -1121,7 +1121,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-[#FFFBD9] dark:bg-[#0F1A0F] text-[#546C37] dark:text-[#CFE3A8] font-['Space_Grotesk'] flex flex-col selection:bg-[#FDC2B1] dark:selection:bg-[#4A2530] selection:text-[#941C2F] dark:selection:text-[#FF9FAE] transition-colors duration-200">
+    <div className="min-h-screen w-full overflow-x-hidden bg-[#FFFBD9] dark:bg-[#0F1A0F] text-[#546C37] dark:text-[#CFE3A8] font-['Space_Grotesk'] flex flex-col selection:bg-[#FDC2B1] dark:selection:bg-[#4A2530] selection:text-[#941C2F] dark:selection:text-[#FF9FAE] transition-colors duration-200">
       {/* Desktop Fixed Left Sidebar Navigation */}
       <Sidebar
         activeTab={activeTab}
@@ -1187,7 +1187,7 @@ export default function App() {
       </div>
 
       {/* Main Content Area */}
-      <main className={`flex-1 flex flex-col md:pl-64 ${activeTab === 'chat' ? 'pb-0' : 'pb-16'} md:pb-0`}>
+      <main className={`flex-1 flex flex-col min-w-0 w-full md:pl-64 ${activeTab === 'chat' ? 'pb-0' : 'pb-16'} md:pb-0`}>
         {activeTab === 'home' && (
           <HomeView
             onStartChatWithPrompt={handleStartChatWithPrompt}
@@ -1237,8 +1237,11 @@ export default function App() {
 
         {activeTab === 'formulas' && (
           <FormulasView
-            onAskAboutFormula={(name, latex) => {
-              handleStartChatWithPrompt(`Por favor resuelve un problema práctico paso a paso aplicando la fórmula de ${name}: ${latex}`);
+            onAskAboutFormula={(name, latex, moduleId) => {
+              handleStartChatWithPrompt(
+                `Por favor resuelve un problema práctico paso a paso aplicando la fórmula de **${name}**:\n\n$$\n${latex.trim()}\n$$`,
+                moduleId
+              );
             }}
           />
         )}

@@ -7,8 +7,6 @@ import {
   BookOpen, 
   Sun, 
   Moon, 
-  Camera, 
-  Mic, 
   LogOut,
   LogIn
 } from 'lucide-react';
@@ -16,8 +14,6 @@ import {
 interface HeaderProps {
   activeTab: 'home' | 'chat' | 'simulators' | 'formulas';
   onSelectTab: (tab: 'home' | 'chat' | 'simulators' | 'formulas') => void;
-  onOpenScanner: () => void;
-  onOpenVoice: () => void;
   isDark?: boolean;
   onToggleTheme?: () => void;
   authStatus?: 'guest' | 'google' | 'loading' | 'signedOut' | 'verifyEmail';
@@ -30,8 +26,6 @@ interface HeaderProps {
 export const Header: React.FC<HeaderProps> = ({
   activeTab,
   onSelectTab,
-  onOpenScanner,
-  onOpenVoice,
   isDark = false,
   onToggleTheme,
   authStatus = 'guest',
@@ -112,32 +106,8 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
 
-        {/* Right block: Escanear, Voz, Theme toggle & Auth Profile Controls */}
+        {/* Right block: Theme toggle & Auth Profile Controls */}
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-          {/* Scanner action shortcut */}
-          <button
-            type="button"
-            onClick={onOpenScanner}
-            title="Escanear ejercicio con cámara"
-            aria-label="Escanear ejercicio"
-            className="p-1.5 sm:px-2.5 sm:py-1 rounded-xl bg-white/80 dark:bg-[#16241A]/80 border border-[#ADCA88]/50 dark:border-[#3C5A40]/50 text-[#546C37] dark:text-[#CFE3A8] hover:bg-[#D6E3B1] dark:hover:bg-[#2F5237] transition-all flex items-center gap-1.5 text-xs font-semibold shadow-2xs cursor-pointer"
-          >
-            <Camera className="w-3.5 h-3.5" />
-            <span className="hidden md:inline">Escanear</span>
-          </button>
-
-          {/* Voice dictation action shortcut */}
-          <button
-            type="button"
-            onClick={onOpenVoice}
-            title="Dictar ejercicio por voz"
-            aria-label="Dictar por voz"
-            className="p-1.5 sm:px-2.5 sm:py-1 rounded-xl bg-white/80 dark:bg-[#16241A]/80 border border-[#ADCA88]/50 dark:border-[#3C5A40]/50 text-[#546C37] dark:text-[#CFE3A8] hover:bg-[#D6E3B1] dark:hover:bg-[#2F5237] transition-all flex items-center gap-1.5 text-xs font-semibold shadow-2xs cursor-pointer"
-          >
-            <Mic className="w-3.5 h-3.5" />
-            <span className="hidden md:inline">Voz</span>
-          </button>
-
           {/* Mobile Theme Toggle */}
           {onToggleTheme && (
             <button
@@ -158,7 +128,7 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Auth Session Controls */}
           {authStatus === 'google' && user ? (
-            <div className="flex items-center gap-1.5 sm:gap-2 pl-1 sm:pl-2 border-l border-[#ADCA88]/40 dark:border-[#3C5A40]/40">
+            <div className="flex items-center gap-1.5 sm:gap-2 pl-1 sm:pl-2 md:pl-0 border-l md:border-l-0 border-[#ADCA88]/40 dark:border-[#3C5A40]/40">
               {user.photoURL && !avatarError ? (
                 <img
                   src={user.photoURL}
@@ -186,7 +156,7 @@ export const Header: React.FC<HeaderProps> = ({
               )}
             </div>
           ) : (
-            <div className="flex items-center pl-1 sm:pl-2 border-l border-[#ADCA88]/40 dark:border-[#3C5A40]/40">
+            <div className="flex items-center pl-1 sm:pl-2 md:pl-0 border-l md:border-l-0 border-[#ADCA88]/40 dark:border-[#3C5A40]/40">
               {onSignInFromGuest && (
                 <button
                   type="button"

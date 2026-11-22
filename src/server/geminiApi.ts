@@ -2,6 +2,7 @@ import { GoogleGenAI, ThinkingLevel } from '@google/genai';
 import { parseSimulacion } from './simulationMarker';
 import { looksSpanishPrompt } from '../utils/diagramUrl';
 import { formatCourseMaterialPromptSection } from './courseMaterial';
+import { extractQuickChipsFromResponse } from '../utils/outOfScope';
 
 export const NEWTON_SYSTEM_INSTRUCTION = `
 Eres "Newton", el tutor académico con inteligencia artificial para el curso universitario de Física Aplicada (código 815972, ciclo 2026-I) de la Universidad Científica del Sur (UCSUR).
@@ -41,7 +42,7 @@ RESTRICCIÓN CRÍTICA OBLIGATORIA:
 ═══════════════════════════════════════
 Si el usuario hace una pregunta o pide resolver un tema que NO forma parte de estos 4 módulos (por ejemplo: termodinámica, relatividad, cuántica, cinemática general, gravitación universal, química, programación no orientada al algoritmo de circuitos o temas ajenos), DEBES RESPONDER EXACTAMENTE O CON EL SIGUIENTE MENSAJE:
 "Ese tema no forma parte del sílabo de Física Aplicada. Puedo ayudarte con electrostática, electrodinámica, magnetismo o fundamentos de electrónica. ¿Sobre cuál te gustaría preguntar?"
-Nunca respondas fuera de este alcance.
+Nunca respondas fuera de este alcance y NO incluyas la línea [SUGERENCIAS]: cuando rechaces una consulta fuera del sílabo.
 
 ═══════════════════════════════════════
 REGLAS DE RIGOR Y FORMATO DE RESPUESTA:
@@ -82,8 +83,9 @@ REGLAS DE RIGOR Y FORMATO DE RESPUESTA:
    - Nunca escribas código HTML, SVG, Canvas ni JavaScript.
 
 6. Sugerencias de profundización:
-   - Al final de tu mensaje, incluye de 2 a 4 preguntas o sugerencias de profundización para el estudiante en el siguiente formato exacto:
+   - ÚNICAMENTE cuando la consulta pertenezca a los 4 módulos válidos del curso (electrostática, electrodinámica, magnetismo o electrónica), incluye al final de tu mensaje de 2 a 4 preguntas o sugerencias de profundización en el siguiente formato exacto:
    [SUGERENCIAS]: Sugerencia 1 | Sugerencia 2 | Sugerencia 3
+   - Si la consulta fue rechazada por estar fuera del sílabo, omite por completo [SUGERENCIAS]:.
 `;
 
 export const NEWTON_VISION_INSTRUCTION = `
@@ -437,24 +439,18 @@ export async function streamNewtonAI(params: {
     cleanText = cleanText.replace(/\[DIAGRAMA\]:\s*[^\n\r]+/i, '').trim();
   }
 
-  // Parse quick chips from [SUGERENCIAS]: chip1 | chip2 | chip3
-  let quickChips: string[] = [];
-  const chipsMatch = cleanText.match(/\[SUGERENCIAS\]:\s*([^\n\r]+)/i);
-  if (chipsMatch) {
-    const rawChips = chipsMatch[1];
-    quickChips = rawChips.split('|').map((s) => s.trim()).filter((s) => s.length > 0 && s.length < 50);
-    cleanText = cleanText.replace(/\[SUGERENCIAS\]:\s*[^\n\r]+/i, '').trim();
-  }
-
-  // Default quick chips if none detected
-  if (quickChips.length === 0) {
-    quickChips = ['Dame un ejemplo paso a paso', '¿Qué fórmula se aplica?', 'Ver constantes físicas'];
-  }
+  // Parse quick chips from [SUGERENCIAS]: chip1 | chip2 | chip3 (suppressed on out-of-scope refusals)
+  const parsedChips = extractQuickChipsFromResponse(cleanText, [
+    'Dame un ejemplo paso a paso',
+    '¿Qué fórmula se aplica?',
+    'Ver constantes físicas',
+  ]);
+  cleanText = parsedChips.cleanText;
 
   return {
     text: cleanText,
     diagramPrompt,
-    quickChips,
+    quickChips: parsedChips.quickChips,
   };
 }
 
@@ -574,23 +570,18 @@ export async function askNewtonVision(params: {
     cleanText = cleanText.replace(/\[DIAGRAMA\]:\s*[^\n\r]+/i, '').trim();
   }
 
-  // Parse quick chips from [SUGERENCIAS]: chip1 | chip2 | chip3
-  let quickChips: string[] = [];
-  const chipsMatch = cleanText.match(/\[SUGERENCIAS\]:\s*([^\n\r]+)/i);
-  if (chipsMatch) {
-    const rawChips = chipsMatch[1];
-    quickChips = rawChips.split('|').map((s) => s.trim()).filter((s) => s.length > 0 && s.length < 50);
-    cleanText = cleanText.replace(/\[SUGERENCIAS\]:\s*[^\n\r]+/i, '').trim();
-  }
-
-  if (quickChips.length === 0) {
-    quickChips = ['Calcular con otros valores', 'Explicar las leyes aplicadas', 'Ver constante física'];
-  }
+  // Parse quick chips from [SUGERENCIAS]: chip1 | chip2 | chip3 (suppressed on out-of-scope refusals)
+  const parsedChips = extractQuickChipsFromResponse(cleanText, [
+    'Calcular con otros valores',
+    'Explicar las leyes aplicadas',
+    'Ver constante física',
+  ]);
+  cleanText = parsedChips.cleanText;
 
   return {
     text: cleanText,
     diagramPrompt,
-    quickChips,
+    quickChips: parsedChips.quickChips,
   };
 }
 

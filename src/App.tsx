@@ -31,6 +31,7 @@ import { Home, MessageSquare, Activity, BookOpen } from 'lucide-react';
 import { useTheme } from './hooks/useTheme';
 import { userAskedForDiagram } from './utils/diagramUrl';
 import { getAuthApiHeaders } from './utils/sessionClient';
+import { isOutOfScopeResponse } from './utils/outOfScope';
 
 type AuthStatus = 'loading' | 'signedOut' | 'guest' | 'google' | 'verifyEmail';
 
@@ -481,7 +482,7 @@ export default function App() {
           sessionId: targetSessionId,
           sender: 'bot',
           text: data.text,
-          quickChips: data.quickChips || [],
+          quickChips: isOutOfScopeResponse(data.text) ? [] : (data.quickChips || []),
           timestamp: botTime,
           createdAt: botCreatedAt,
           ...(data.diagramPrompt !== undefined ? { diagramPrompt: data.diagramPrompt } : {}),
@@ -631,7 +632,7 @@ export default function App() {
               sessionId: targetSessionId,
               sender: 'bot',
               text: finalCleanText,
-              quickChips: eventData.quickChips || [],
+              quickChips: isOutOfScopeResponse(finalCleanText) ? [] : (eventData.quickChips || []),
               timestamp: botTime,
               createdAt: botCreatedAt,
               ...(eventData.diagramPrompt !== undefined ? { diagramPrompt: eventData.diagramPrompt } : {}),
@@ -1224,7 +1225,7 @@ export default function App() {
         sessionId: newSessionId,
         sender: 'bot',
         text: resData.text,
-        quickChips: resData.quickChips || [],
+        quickChips: isOutOfScopeResponse(resData.text) ? [] : (resData.quickChips || []),
         timestamp: botTime,
         createdAt: botCreatedAt,
         ...(resData.diagramPrompt !== undefined ? { diagramPrompt: resData.diagramPrompt } : {}),
@@ -1393,8 +1394,6 @@ export default function App() {
         <Header
           activeTab={activeTab}
           onSelectTab={setActiveTab}
-          onOpenScanner={() => setIsScannerOpen(true)}
-          onOpenVoice={() => setIsVoiceOpen(true)}
           isDark={isDark}
           onToggleTheme={toggleTheme}
           authStatus={authStatus}

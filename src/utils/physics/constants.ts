@@ -6,7 +6,10 @@
 export const K_COULOMB = 9e9;
 
 /** Permitividad eléctrica del vacío (F/m o C²/(N·m²)). */
-export const EPSILON_0 = 8.854e-12;
+export const EPSILON_0 = 8.85e-12;
+
+/** Rigidez dieléctrica aproximada del aire seco (V/m o N/C = 3 MV/m). */
+export const AIR_DIELECTRIC_STRENGTH_V_M = 3e6;
 
 /** Permeabilidad magnética del vacío (T·m/A). */
 export const MU_0 = 4 * Math.PI * 1e-7;

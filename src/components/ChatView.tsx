@@ -5,6 +5,7 @@ import rehypeKatex from 'rehype-katex';
 import { NewtonMascot } from './NewtonMascot';
 import { ChatMessage, ChatSession, CourseModuleId } from '../types';
 import { SpeechService } from '../utils/speech';
+import { isOutOfScopeResponse } from '../utils/outOfScope';
 import { 
   Send, 
   Camera, 
@@ -412,10 +413,10 @@ export const ChatView: React.FC<ChatViewProps> = ({
       </div>
 
       {/* Main Split Layout: Central chat stream and right syllabus panel */}
-      <div className="flex-1 flex gap-4 min-h-0 overflow-hidden relative">
+      <div className="flex-1 flex gap-4 min-h-0 min-w-0 w-full max-w-full overflow-hidden relative">
 
         {/* Central Chat Stream */}
-        <div className="flex-1 flex flex-col min-h-0 bg-[#FFFBD9]/50 dark:bg-[#0F1A0F]/50 rounded-3xl border border-[#ADCA88]/40 dark:border-[#3C5A40]/40 shadow-xs overflow-hidden">
+        <div className="flex-1 flex flex-col min-h-0 min-w-0 w-full max-w-full bg-[#FFFBD9]/50 dark:bg-[#0F1A0F]/50 rounded-3xl border border-[#ADCA88]/40 dark:border-[#3C5A40]/40 shadow-xs overflow-hidden">
           {/* Scrollable Message List */}
           <div className="flex-1 min-h-0 overflow-y-auto p-3 sm:p-5 space-y-4">
             {messages.length === 0 && (
@@ -645,8 +646,8 @@ export const ChatView: React.FC<ChatViewProps> = ({
 
                   </div>
 
-                  {/* Quick Chips suggestions below Newton's response (matching mockup) */}
-                  {!isUser && msg.quickChips && msg.quickChips.length > 0 && (
+                  {/* Quick Chips suggestions below Newton's response (hidden on out-of-scope refusals) */}
+                  {!isUser && !isOutOfScopeResponse(msg.text) && msg.quickChips && msg.quickChips.length > 0 && (
                     <div className="flex flex-wrap gap-1.5 mt-2 max-w-[90%]">
                       {msg.quickChips.map((chip, idx) => (
                         <button
@@ -682,7 +683,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
           </div>
 
           {/* Floating Rounded Bottom Input Bar (strictly matching ChatActivoMovil.png) */}
-          <div className="p-2 sm:p-3 pb-[calc(0.5rem+env(safe-area-inset-bottom))] bg-white/90 dark:bg-[#16241A]/90 backdrop-blur-md border-t border-[#ADCA88]/40 dark:border-[#3C5A40]/40 shrink-0">
+          <div className="w-full max-w-full min-w-0 overflow-hidden px-2 sm:px-4 py-2 sm:py-3 pb-[calc(0.5rem+env(safe-area-inset-bottom))] bg-white/90 dark:bg-[#16241A]/90 backdrop-blur-md border-t border-[#ADCA88]/40 dark:border-[#3C5A40]/40 shrink-0">
             {attachedImage && (
               <div className="mb-2 flex items-center gap-2 px-2">
                 <div className="relative inline-flex items-center gap-2 p-1.5 bg-[#FFFBD9] dark:bg-[#0F1A0F] border border-[#ADCA88] dark:border-[#3C5A40] rounded-2xl">
@@ -707,12 +708,13 @@ export const ChatView: React.FC<ChatViewProps> = ({
             )}
             <form
               onSubmit={handleSend}
-              className="bg-[#FFFBD9] dark:bg-[#0F1A0F] rounded-3xl p-1.5 sm:p-2 border-2 border-[#ADCA88] dark:border-[#3C5A40] shadow-sm flex items-center gap-2 focus-within:ring-2 focus-within:ring-[#546C37] dark:focus-within:ring-[#6E8F47] transition-all"
+              className="w-full max-w-full min-w-0 overflow-hidden bg-[#FFFBD9] dark:bg-[#0F1A0F] rounded-3xl p-1.5 sm:p-2 border-2 border-[#ADCA88] dark:border-[#3C5A40] shadow-sm flex items-center gap-1.5 sm:gap-2 focus-within:ring-2 focus-within:ring-[#546C37] dark:focus-within:ring-[#6E8F47] transition-all"
             >
               <button
                 type="button"
                 onClick={onOpenScanner}
                 title="Escanear ejercicio de libreta o apunte"
+                aria-label="Escanear ejercicio con cámara"
                 className="w-9 h-9 rounded-full bg-white dark:bg-[#16241A] hover:bg-[#D6E3B1] dark:hover:bg-[#2F5237] border border-[#ADCA88]/60 dark:border-[#3C5A40]/60 text-[#546C37] dark:text-[#CFE3A8] flex items-center justify-center transition-colors shrink-0 cursor-pointer"
               >
                 <Camera className="w-4 h-4 text-[#546C37] dark:text-[#CFE3A8]" />
@@ -722,6 +724,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                 type="button"
                 onClick={onOpenVoice}
                 title="Dictar duda a Newton con audio"
+                aria-label="Dictar duda con micrófono"
                 className="w-9 h-9 rounded-full bg-[#FA8989] hover:bg-[#FA8989]/90 text-white flex items-center justify-center transition-transform active:scale-95 shrink-0 shadow-xs cursor-pointer"
               >
                 <Mic className="w-4 h-4 text-white" />
@@ -734,7 +737,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                 onPaste={handleInputPaste}
                 placeholder="Pregúntale a Newton o formula una hipótesis..."
                 disabled={isLoading || loadingMessages}
-                className="flex-1 bg-transparent px-2 text-xs sm:text-sm text-[#546C37] dark:text-[#CFE3A8] placeholder-[#546C37]/50 dark:placeholder-[#CFE3A8]/50 focus:outline-none font-['Space_Grotesk']"
+                className="flex-1 min-w-0 w-full bg-transparent px-1.5 sm:px-2 text-xs sm:text-sm text-[#546C37] dark:text-[#CFE3A8] placeholder-[#546C37]/50 dark:placeholder-[#CFE3A8]/50 focus:outline-none font-['Space_Grotesk']"
               />
 
               {isLoading && onStopGeneration ? (
@@ -742,14 +745,16 @@ export const ChatView: React.FC<ChatViewProps> = ({
                   type="button"
                   onClick={onStopGeneration}
                   title="Detener la respuesta de Newton"
+                  aria-label="Detener la respuesta de Newton"
                   className="h-9 px-3 rounded-full bg-[#941C2F] dark:bg-[#C0334A] hover:bg-[#941C2F]/90 dark:hover:bg-[#C0334A]/90 text-white text-xs font-bold flex items-center justify-center gap-1.5 transition-all active:scale-95 shrink-0 shadow-xs cursor-pointer"
                 >
-                  <Square className="w-3.5 h-3.5 fill-current" />
-                  <span>Detener</span>
+                  <Square className="w-3.5 h-3.5 fill-current shrink-0" />
+                  <span className="hidden sm:inline">Detener</span>
                 </button>
               ) : (
                 <button
                   type="submit"
+                  aria-label="Enviar mensaje"
                   disabled={(!inputText.trim() && !attachedImage) || isLoading || loadingMessages}
                   className="w-9 h-9 rounded-full bg-[#546C37] dark:bg-[#6E8F47] hover:bg-[#546C37]/90 dark:hover:bg-[#6E8F47]/90 disabled:opacity-40 text-white flex items-center justify-center transition-transform active:scale-95 shrink-0 shadow-xs cursor-pointer"
                 >
@@ -757,7 +762,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                 </button>
               )}
             </form>
-            <p className="mt-1.5 mb-0.5 px-2 text-center text-[11px] leading-snug text-neutral-500 dark:text-neutral-400 font-['Space_Grotesk']">
+            <p className="mt-1.5 mb-0.5 px-2 text-center text-[11px] leading-snug text-neutral-500 dark:text-neutral-400 font-['Space_Grotesk'] break-words">
               Newton es una IA y puede cometer errores. Verifica los cálculos y resultados importantes.
             </p>
           </div>

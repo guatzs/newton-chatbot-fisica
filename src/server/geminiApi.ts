@@ -1,4 +1,4 @@
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, ThinkingLevel } from '@google/genai';
 import { SimulationAdjustment, SimulationParams, SimulationType } from '../types';
 import { parseSimulacion } from './simulationMarker';
 import { buildPollinationsImageUrl, looksSpanishPrompt } from '../utils/diagramUrl';
@@ -160,7 +160,9 @@ function getAI(): GoogleGenAI {
 }
 
 const MODEL_ATTEMPT_TIMEOUT_MS = 15000;
-const AUDIO_TRANSCRIPTION_MODELS = ['gemini-4-hydrogen', 'gemini-3.1-flash-lite'] as const;
+const AUDIO_TRANSCRIPTION_MODELS = ['gemini-3.5-transcribe', 'gemini-3.8-flash', 'gemini-3.1-flash-lite'] as const;
+const AUDIO_ATTEMPT_TIMEOUT_MS = 20000;
+const VISION_ATTEMPT_TIMEOUT_MS = 45000;
 
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, model: string): Promise<T> {
   let timeoutId: NodeJS.Timeout | null = null;
@@ -516,9 +518,10 @@ export async function askNewtonVision(params: {
           contents,
           config: {
             systemInstruction: getNewtonVisionInstruction(),
+            thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
           },
         }),
-        MODEL_ATTEMPT_TIMEOUT_MS,
+        VISION_ATTEMPT_TIMEOUT_MS,
         model
       );
 
@@ -645,7 +648,7 @@ export async function transcribeNewtonAudio(params: {
           model,
           contents,
         }),
-        MODEL_ATTEMPT_TIMEOUT_MS,
+        AUDIO_ATTEMPT_TIMEOUT_MS,
         model
       );
 
@@ -655,12 +658,10 @@ export async function transcribeNewtonAudio(params: {
     } catch (err: any) {
       console.timeEnd(modelTimer);
       lastError = err;
-      const retryable = isRetryableModelError(err);
-      console.warn(
-        `[Newton Audio] Model ${model} failed (retryable=${retryable}):`,
-        err?.message || err
-      );
-      if (retryable && i < AUDIO_TRANSCRIPTION_MODELS.length - 1) {
+      console.warn(`[Newton Audio] Model ${model} failed:`, err?.message || err);
+      // En audio se prueba SIEMPRE el siguiente modelo (un 400 por formato o modelo no compatible
+      // con generateContent no debe cortar la transcripción)
+      if (i < AUDIO_TRANSCRIPTION_MODELS.length - 1) {
         continue;
       }
       throw err;

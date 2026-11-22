@@ -10,6 +10,66 @@ interface VoiceModalProps {
 
 const MAX_RECORDING_SECONDS = 60;
 
+/**
+ * Convierte la grabación (webm, mp4, ogg...) a WAV mono de 16 kHz, un formato que Gemini
+ * acepta siempre. Si el navegador no puede decodificarla, devuelve el audio original.
+ */
+async function convertToWav(blob: Blob): Promise<{ blob: Blob; mimeType: string }> {
+  try {
+    const AudioCtx: typeof AudioContext | undefined =
+      (window as any).AudioContext || (window as any).webkitAudioContext;
+    if (!AudioCtx || typeof OfflineAudioContext === 'undefined') {
+      return { blob, mimeType: blob.type || 'audio/webm' };
+    }
+    const arrayBuffer = await blob.arrayBuffer();
+    const ctx = new AudioCtx();
+    let decoded: AudioBuffer;
+    try {
+      decoded = await ctx.decodeAudioData(arrayBuffer);
+    } finally {
+      ctx.close().catch(() => {});
+    }
+
+    const targetRate = 16000;
+    const length = Math.max(1, Math.ceil(decoded.duration * targetRate));
+    const offline = new OfflineAudioContext(1, length, targetRate);
+    const source = offline.createBufferSource();
+    source.buffer = decoded;
+    source.connect(offline.destination);
+    source.start(0);
+    const rendered = await offline.startRendering();
+    const samples = rendered.getChannelData(0);
+
+    const buffer = new ArrayBuffer(44 + samples.length * 2);
+    const view = new DataView(buffer);
+    const writeText = (offset: number, text: string) => {
+      for (let i = 0; i < text.length; i++) view.setUint8(offset + i, text.charCodeAt(i));
+    };
+    writeText(0, 'RIFF');
+    view.setUint32(4, 36 + samples.length * 2, true);
+    writeText(8, 'WAVE');
+    writeText(12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true); // PCM
+    view.setUint16(22, 1, true); // mono
+    view.setUint32(24, targetRate, true);
+    view.setUint32(28, targetRate * 2, true);
+    view.setUint16(32, 2, true);
+    view.setUint16(34, 16, true);
+    writeText(36, 'data');
+    view.setUint32(40, samples.length * 2, true);
+    let offset = 44;
+    for (let i = 0; i < samples.length; i++, offset += 2) {
+      const v = Math.max(-1, Math.min(1, samples[i]));
+      view.setInt16(offset, v < 0 ? v * 0x8000 : v * 0x7fff, true);
+    }
+    return { blob: new Blob([buffer], { type: 'audio/wav' }), mimeType: 'audio/wav' };
+  } catch (err) {
+    console.warn('No se pudo convertir el audio a WAV; se enviará el original:', err);
+    return { blob, mimeType: blob.type || 'audio/webm' };
+  }
+}
+
 export const VoiceModal: React.FC<VoiceModalProps> = ({
   isOpen,
   onClose,
@@ -169,8 +229,10 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({
         }
 
         if (audioBlob.size > 0) {
-          lastAudioRef.current = { blob: audioBlob, mimeType: cleanMime };
-          await processAudioWithGemini(audioBlob, cleanMime);
+          const converted = await convertToWav(audioBlob);
+          if (abortOnCloseRef.current) return;
+          lastAudioRef.current = { blob: converted.blob, mimeType: converted.mimeType };
+          await processAudioWithGemini(converted.blob, converted.mimeType);
         } else {
           setErrorMessage('No se capturó audio. Verifica que tu micrófono funcione e intenta de nuevo.');
         }
@@ -190,7 +252,7 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({
       if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
         setPermissionDenied(true);
         setErrorMessage(
-          'Permiso de micrófono denegado. Activa el micrófono en los permisos de tu navegador (ícono de candado junto a la URL) e intenta de nuevo.'
+          'Permiso de micrófono denegado. Activa el micrófono en los permisos de tu navegador (ícono de candado junto a la URL) e intenta de nuevo. Si estás dentro de Google AI Studio, abre la app en una pestaña nueva.'
         );
       } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
         setErrorMessage('No se encontró ningún micrófono conectado en tu dispositivo.');
@@ -237,7 +299,7 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({
           audioBase64: base64Audio,
           mimeType: cleanMimeType,
         }),
-        signal: AbortSignal.timeout(35000),
+        signal: AbortSignal.timeout(60000),
       });
 
       if (!response.ok) {

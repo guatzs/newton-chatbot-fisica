@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { X, Camera, Upload, Trash2, Sparkles, FileText, Cpu, AlertCircle, Loader2, RefreshCw } from 'lucide-react';
 
 interface ScannerModalProps {
@@ -162,6 +162,41 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({ isOpen, onClose, onS
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const lastActionRef = useRef<'camera' | 'upload'>('camera');
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const cameraStreamRef = useRef<MediaStream | null>(null);
+  const [isCameraOpen, setIsCameraOpen] = useState<boolean>(false);
+
+  const stopCamera = () => {
+    if (cameraStreamRef.current) {
+      cameraStreamRef.current.getTracks().forEach((track) => track.stop());
+      cameraStreamRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+    setIsCameraOpen(false);
+  };
+
+  // Apaga la cámara al cerrar el escáner o al desmontar el componente
+  useEffect(() => {
+    if (!isOpen) stopCamera();
+    return () => {
+      if (cameraStreamRef.current) {
+        cameraStreamRef.current.getTracks().forEach((track) => track.stop());
+        cameraStreamRef.current = null;
+      }
+    };
+  }, [isOpen]);
+
+  // Conecta el video en vivo cuando la cámara está abierta
+  useEffect(() => {
+    if (isCameraOpen && videoRef.current && cameraStreamRef.current) {
+      videoRef.current.srcObject = cameraStreamRef.current;
+      videoRef.current.play().catch(() => {
+        // Algunos navegadores reproducen solo con autoPlay; se ignora
+      });
+    }
+  }, [isCameraOpen]);
 
   if (!isOpen) return null;
 
@@ -169,31 +204,74 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({ isOpen, onClose, onS
     lastActionRef.current = 'camera';
     setErrorMessage(null);
 
-    if (!window.isSecureContext) {
-      setErrorMessage(
-        'La cámara requiere conexión segura (HTTPS). Para activarla, abre la app en HTTPS o usa "Subir imagen" para elegir una foto de tu galería.'
-      );
+    const canUseLiveCamera =
+      window.isSecureContext &&
+      !!navigator.mediaDevices &&
+      typeof navigator.mediaDevices.getUserMedia === 'function';
+
+    // Sin cámara en vivo: usar el selector nativo (en el celular abre la cámara)
+    if (!canUseLiveCamera) {
+      cameraInputRef.current?.click();
       return;
     }
 
     try {
-      if (navigator.permissions && typeof navigator.permissions.query === 'function') {
-        const status = await navigator.permissions.query({ name: 'camera' as PermissionName });
-        if (status.state === 'denied') {
-          setErrorMessage(
-            'Permiso de cámara denegado. Para activarla: toca el ícono de candado o configuración en la barra de direcciones de tu navegador, habilita "Cámara" y pulsa Reintentar (o usa "Subir imagen").'
-          );
-          return;
-        }
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { ideal: 'environment' },
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+        },
+        audio: false,
+      });
+      cameraStreamRef.current = stream;
+      setCustomImage(null);
+      setThumbnailImage(null);
+      setImageStats(null);
+      setIsCameraOpen(true);
+    } catch (err: any) {
+      console.warn('Error al abrir la cámara:', err);
+      const name = err?.name || '';
+      if (name === 'NotAllowedError' || name === 'PermissionDeniedError' || name === 'SecurityError') {
+        setErrorMessage(
+          'No se pudo usar la cámara: el permiso está bloqueado. Toca el ícono de candado junto a la dirección, habilita "Cámara" y pulsa Reintentar. Si estás dentro de Google AI Studio, abre la app en una pestaña nueva. También puedes usar "Subir imagen".'
+        );
+      } else if (name === 'NotFoundError' || name === 'OverconstrainedError' || name === 'DevicesNotFoundError') {
+        setErrorMessage('No se encontró ninguna cámara en este dispositivo. Usa "Subir imagen" para elegir una foto.');
+      } else if (name === 'NotReadableError' || name === 'TrackStartError') {
+        setErrorMessage('La cámara está ocupada por otra aplicación (por ejemplo, Zoom o Meet). Ciérrala y pulsa Reintentar.');
+      } else {
+        setErrorMessage(`No se pudo abrir la cámara (${err?.message || name || 'error desconocido'}). Usa "Subir imagen".`);
       }
-    } catch {
-      // Some browsers do not support permissions.query for camera; proceed to file capture
     }
+  };
 
-    cameraInputRef.current?.click();
+  const handleCapturePhoto = async () => {
+    const video = videoRef.current;
+    if (!video || !video.videoWidth || !video.videoHeight) {
+      setErrorMessage('La cámara todavía se está iniciando. Espera un segundo y vuelve a intentarlo.');
+      return;
+    }
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      setErrorMessage('No se pudo capturar la foto. Usa "Subir imagen".');
+      return;
+    }
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.92));
+    stopCamera();
+    if (!blob) {
+      setErrorMessage('No se pudo capturar la foto. Usa "Subir imagen".');
+      return;
+    }
+    await processImageFile(new File([blob], `foto-${Date.now()}.jpg`, { type: 'image/jpeg' }));
   };
 
   const handleOpenUpload = () => {
+    stopCamera();
     lastActionRef.current = 'upload';
     setErrorMessage(null);
     uploadInputRef.current?.click();
@@ -210,9 +288,12 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({ isOpen, onClose, onS
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    await processImageFile(file);
+  };
 
+  const processImageFile = async (file: File) => {
     // Reject non-image files
-    if (!file.type.startsWith('image/')) {
+    if (file.type && !file.type.startsWith('image/')) {
       setErrorMessage('Por favor selecciona un archivo de imagen válido (JPG, PNG, WebP).');
       if (cameraInputRef.current) cameraInputRef.current.value = '';
       if (uploadInputRef.current) uploadInputRef.current.value = '';
@@ -334,7 +415,34 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({ isOpen, onClose, onS
 
             {/* Display Viewport Content */}
             <div className="absolute inset-0 flex items-center justify-center p-4">
-              {isCompressing ? (
+              {isCameraOpen ? (
+                <div className="relative w-full h-full flex items-center justify-center">
+                  <video
+                    ref={videoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    className="max-h-full max-w-full object-contain rounded-lg"
+                  />
+                  <div className="absolute bottom-8 left-0 right-0 flex items-center justify-center gap-2 z-20">
+                    <button
+                      type="button"
+                      onClick={handleCapturePhoto}
+                      className="py-2 px-4 bg-[#941C2F] hover:bg-[#941C2F]/90 text-white rounded-full text-xs font-bold flex items-center gap-1.5 shadow-lg active:scale-95 cursor-pointer"
+                    >
+                      <Camera className="w-4 h-4" />
+                      <span>Capturar</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={stopCamera}
+                      className="py-2 px-3 bg-black/60 hover:bg-black/80 text-white rounded-full text-xs font-semibold cursor-pointer"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              ) : isCompressing ? (
                 <div className="flex flex-col items-center justify-center text-[#D6E3B1] space-y-2">
                   <Loader2 className="w-8 h-8 animate-spin text-[#FA8989]" />
                   <span className="text-xs font-mono">Procesando imagen…</span>

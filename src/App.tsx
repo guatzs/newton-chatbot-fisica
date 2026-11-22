@@ -968,7 +968,7 @@ export default function App() {
           imageBase64: data.imageBase64,
           imageMimeType: data.imageBase64.startsWith('data:image/png') ? 'image/png' : 'image/jpeg',
         }),
-        signal: AbortSignal.timeout(35000),
+        signal: AbortSignal.timeout(100000),
       });
 
       if (!res.ok) {
@@ -1038,7 +1038,7 @@ export default function App() {
         text:
           err?.name === 'TimeoutError'
             ? 'El análisis de la imagen tardó demasiado. Pulsa Reintentar.'
-            : 'No pude analizar la imagen. Revisa tu conexión e inténtalo de nuevo.',
+            : `No pude analizar la imagen. Pulsa Reintentar. Detalle: ${err?.message || 'error desconocido'}`,
         isError: true,
         retryPrompt: data.prompt,
         retryImageBase64: data.imageBase64,
